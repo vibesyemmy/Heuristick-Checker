@@ -1,316 +1,335 @@
-import { ColorWithOpacity, findOpaqueBackground, convertFigmaColorToHex, calculateContrastRatio } from './contrast';
+// Types and interfaces
+type IconRole = 'interactive' | 'informative' | 'decorative';
 
-// Types for icon classification
-interface IconMetadata {
-    nodeId: string;
-    nodeName: string;
-    nodeType: 'VECTOR' | 'FRAME' | 'COMPONENT' | 'INSTANCE';
-    size: { width: number; height: number };
-    isEssential: boolean;  // Based on naming or metadata
-    isDecorative: boolean; // Based on naming or metadata
-    role: 'interactive' | 'informative' | 'decorative';
+interface IconDetectionConfig {
+  maxSize: number;
+  namePatterns: string[];
+  roleOverrides: Map<string, IconRole>;
+  contrastThresholds: Record<IconRole, number>;
 }
 
-// Enhanced color tracking for multi-color icons
-interface IconColorInfo {
-    color: ColorWithOpacity;
-    coverage: number;  // Percentage of icon area this color covers
-    isStroke: boolean;
-    strokeWeight?: number;
-    importance: 'primary' | 'secondary' | 'decorative';
+interface Color {
+  r: number;
+  g: number;
+  b: number;
+  a?: number;
 }
 
-interface IconAnalysis {
-    metadata: IconMetadata;
-    colors: IconColorInfo[];
-    dominantColor?: IconColorInfo;  // Most prominent/important color
+interface IconAnalysisResult {
+  nodeId: string;
+  nodeName: string;
+  role: IconRole;
+  colors: {
+    original: Color;
+    blended: Color;
+    contrastRatio: number;
+  }[];
+  backgroundColor: Color;
+  contrastRatio: number;
+  requiredRatio: number;
+  isCompliant: boolean;
+  failingColors?: Color[];
 }
 
-interface IconContrastIssue {
-    nodeId: string;
-    nodeName: string;
-    role: 'interactive' | 'informative' | 'decorative';
-    colors: {
-        original: string;
-        blended: string;
-        coverage: number;
-        contrastRatio: number;
-    }[];
-    backgroundColor: string;
-    requiredRatio: number;  // 3:1 for standard, configurable for stricter requirements
-    isCompliant: boolean;
-    failingColors?: string[];  // Colors that don't meet contrast requirements
-    recommendations: string[];
+// Configuration
+const defaultConfig: IconDetectionConfig = {
+  maxSize: 48,
+  namePatterns: ['icon', 'ico', 'info', 'i', 'delete', 'add', 'close', 'menu'],
+  roleOverrides: new Map(),
+  contrastThresholds: {
+    interactive: 3.0,
+    informative: 3.0,
+    decorative: 2.0
+  }
+};
+
+// Cache for performance
+const iconCache = new WeakMap<SceneNode, boolean>();
+const roleCache = new WeakMap<SceneNode, IconRole>();
+const backgroundCache = new WeakMap<SceneNode, Color>();
+
+// Icon detection
+function isIconNode(node: SceneNode, config = defaultConfig): boolean {
+  if (iconCache.has(node)) {
+    return iconCache.get(node)!;
+  }
+
+  console.log(`Checking if node "${node.name}" is an icon:`);
+  console.log(`- Type: ${node.type}`);
+  console.log(`- Size: ${node.width}x${node.height}`);
+  console.log(`- Parent: ${node.parent?.type || 'none'}`);
+
+  const nameMatch = isIconByName(node, config);
+  const typeMatch = isIconByType(node);
+  const sizeMatch = isIconBySize(node, config);
+  const contextMatch = isIconByContext(node);
+
+  console.log(`- Name match: ${nameMatch}`);
+  console.log(`- Type match: ${typeMatch}`);
+  console.log(`- Size match: ${sizeMatch}`);
+  console.log(`- Context match: ${contextMatch}`);
+
+  const result = nameMatch || typeMatch || sizeMatch || contextMatch;
+  iconCache.set(node, result);
+  console.log(`Final result: node "${node.name}" ${result ? 'is' : 'is not'} an icon`);
+  return result;
 }
 
-// Common icon sizes in Figma (in pixels)
-const COMMON_ICON_SIZES = [16, 24, 32, 48];
-
-/**
- * Determines if a node is likely an icon based on various heuristics
- */
-function isIconNode(node: SceneNode): boolean {
-    // 1. Name-based detection
-    const isNamedIcon = /icon|ico/i.test(node.name);
-    const isMarkedIcon = node.name.startsWith('#icon');
-
-    // 2. Structure-based detection
-    const isVectorIcon = node.type === 'VECTOR';
-    const isVectorGroup = node.type === 'FRAME' && 
-        'children' in node && 
-        node.children.every(child => child.type === 'VECTOR');
-    const isComponent = node.type === 'COMPONENT' || node.type === 'INSTANCE';
-
-    // 3. Size-based detection (common icon sizes)
-    const hasIconDimensions = COMMON_ICON_SIZES.includes(Math.round(node.width)) && 
-        Math.abs(node.width - node.height) < 1; // Allow for minor differences
-
-    // 4. Parent-based detection (icons often live in specific containers)
-    const hasIconParent = node.parent && /icon|button/i.test(node.parent.name);
-
-    return (isNamedIcon || isMarkedIcon || hasIconParent) || 
-        ((isVectorIcon || isVectorGroup || isComponent) && hasIconDimensions);
+function isIconByName(node: SceneNode, config: IconDetectionConfig): boolean {
+  const name = node.name.toLowerCase();
+  const matches = config.namePatterns.filter(pattern => name.includes(pattern));
+  if (matches.length > 0) {
+    console.log(`Name "${name}" matches patterns: ${matches.join(', ')}`);
+  }
+  return matches.length > 0;
 }
 
-/**
- * Determines the role of an icon based on its context and properties
- */
-function determineIconRole(node: SceneNode): IconMetadata['role'] {
-    // Check explicit role markers in name
-    if (node.name.includes('#interactive')) return 'interactive';
-    if (node.name.includes('#decorative')) return 'decorative';
-    
-    // Check parent context
-    const parent = node.parent;
-    if (parent) {
-        // Icons in buttons or interactive components are likely interactive
-        if (/button|link|control|input/i.test(parent.name)) {
-            return 'interactive';
-        }
+function isIconByType(node: SceneNode): boolean {
+  const validTypes = ['VECTOR', 'FRAME', 'COMPONENT', 'INSTANCE', 'ELLIPSE', 'STAR', 'RECTANGLE'];
+  const isValid = validTypes.includes(node.type);
+  if (isValid) {
+    console.log(`Type "${node.type}" is a valid icon type`);
+  }
+  return isValid;
+}
+
+function isIconBySize(node: SceneNode, config: IconDetectionConfig): boolean {
+  const isValidSize = node.width <= config.maxSize && node.height <= config.maxSize;
+  if (isValidSize) {
+    console.log(`Size ${node.width}x${node.height} is within max size ${config.maxSize}`);
+  }
+  return isValidSize;
+}
+
+function isIconByContext(node: SceneNode): boolean {
+  // Check if the node is inside an interactive component
+  let parent = node.parent;
+  while (parent) {
+    if (parent.type === 'INSTANCE' || 
+        parent.name.toLowerCase().includes('button') ||
+        parent.name.toLowerCase().includes('link')) {
+      console.log(`Found interactive parent: ${parent.type} "${parent.name}"`);
+      return true;
+    }
+    parent = parent.parent;
+  }
+  return false;
+}
+
+// Role determination
+function determineIconRole(node: SceneNode, config = defaultConfig): IconRole {
+  if (roleCache.has(node)) {
+    return roleCache.get(node)!;
+  }
+
+  let role: IconRole;
+
+  // Check for manual override
+  if (config.roleOverrides.has(node.name)) {
+    role = config.roleOverrides.get(node.name)!;
+  } else {
+    // Automatic detection
+    if (isInteractive(node)) {
+      role = 'interactive';
+    } else if (isDecorative(node)) {
+      role = 'decorative';
+    } else {
+      role = 'informative';
+    }
+  }
+
+  roleCache.set(node, role);
+  console.log(`Icon "${node.name}" determined to be ${role}`);
+  return role;
+}
+
+function isInteractive(node: SceneNode): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+
+  const parentName = parent.name.toLowerCase();
+  return parentName.includes('button') || 
+         parentName.includes('link') ||
+         parentName.includes('menu') ||
+         parentName.includes('nav');
+}
+
+function isDecorative(node: SceneNode): boolean {
+  const name = node.name.toLowerCase();
+  return name.includes('decorative') || 
+         name.includes('background') ||
+         name.startsWith('bg-');
+}
+
+// Background detection
+function findEffectiveBackground(node: SceneNode): Color {
+  if (backgroundCache.has(node)) {
+    return backgroundCache.get(node)!;
+  }
+
+  try {
+    let background: Color = { r: 1, g: 1, b: 1 };
+
+    if ('fills' in node && Array.isArray(node.fills)) {
+      const solidFills = node.fills.filter((fill: Paint) => 
+        fill.type === 'SOLID' && fill.visible !== false
+      );
+      if (solidFills.length > 0) {
+        return solidFills[0].type === 'SOLID' ? 
+          { r: solidFills[0].color.r, g: solidFills[0].color.g, b: solidFills[0].color.b, a: solidFills[0].opacity } :
+          background;
+      }
     }
 
-    // Check if it's part of a component set that suggests interactivity
-    let current: BaseNode | null = node;
-    while (current) {
-        if (current.type === 'COMPONENT' || current.type === 'INSTANCE') {
-            if (/button|control|navigation|menu|tab|checkbox|radio/i.test(current.name)) {
-                return 'interactive';
-            }
-        }
-        current = current.parent;
-    }
-
-    // Default to informative unless explicitly marked as decorative
-    return 'informative';
-}
-
-/**
- * Classifies an icon node and gathers its metadata
- */
-function classifyIcon(node: SceneNode): IconMetadata {
-    const role = determineIconRole(node);
-    
-    return {
-        nodeId: node.id,
-        nodeName: node.name,
-        nodeType: node.type as IconMetadata['nodeType'],
-        size: { 
-            width: node.width, 
-            height: node.height 
-        },
-        isEssential: role !== 'decorative',
-        isDecorative: role === 'decorative',
-        role
-    };
-}
-
-/**
- * Calculates the approximate coverage area of a fill in an icon
- */
-function calculateCoverage(node: SceneNode): number {
-    // For now, return a simple approximation
-    // In a more sophisticated version, we could calculate actual area coverage
-    return 1 / (('children' in node ? node.children.length : 1));
-}
-
-/**
- * Determines the importance of a fill color in an icon
- */
-function determineFillImportance(node: SceneNode): IconColorInfo['importance'] {
-    // If it's the only color, it's primary
-    if (!('children' in node) || node.children.length === 1) {
-        return 'primary';
-    }
-
-    // If it's marked as background or secondary, treat it as such
-    if (/background|secondary/i.test(node.name)) {
-        return 'secondary';
-    }
-
-    // If it's marked as decorative, treat it as such
-    if (/decorative|accent/i.test(node.name)) {
-        return 'decorative';
-    }
-
-    // Default to primary
-    return 'primary';
-}
-
-/**
- * Analyzes an icon node and extracts its color information
- */
-function analyzeIcon(node: SceneNode): IconAnalysis | null {
-    if (!isIconNode(node)) return null;
-
-    const metadata = classifyIcon(node);
-    const colors: IconColorInfo[] = [];
-
-    function processNode(node: SceneNode) {
-        if ('fills' in node && node.fills) {
-            const fills = node.fills;
-            if (fills !== figma.mixed) {
-                fills.forEach(fill => {
-                    if (fill.type === 'SOLID' && fill.visible !== false) {
-                        // Get node opacity safely
-                        const nodeOpacity = 'opacity' in node ? (node.opacity ?? 1) : 1;
-                        
-                        colors.push({
-                            color: {
-                                color: fill.color,
-                                fillOpacity: fill.opacity ?? 1,
-                                layerOpacity: nodeOpacity
-                            },
-                            coverage: calculateCoverage(node),
-                            isStroke: false,
-                            importance: determineFillImportance(node)
-                        });
-                    }
-                });
-            }
-        }
-
-        // Process children recursively
-        if ('children' in node) {
-            node.children.forEach(processNode);
-        }
-    }
-
-    processNode(node);
-
-    // Find dominant color (primary color with highest coverage)
-    const dominantColor = colors
-        .filter(c => c.importance === 'primary')
-        .sort((a, b) => b.coverage - a.coverage)[0];
-
-    return {
-        metadata,
-        colors,
-        dominantColor
-    };
-}
-
-export function evaluateIconContrast(node: SceneNode): IconContrastIssue[] {
-    const issues: IconContrastIssue[] = [];
-
-    function traverse(node: SceneNode) {
-        const iconAnalysis = analyzeIcon(node);
-        
-        if (iconAnalysis) {
-            const background = findOpaqueBackground(node);
-            const backgroundHex = convertFigmaColorToHex(background);
-
-            // Analyze each color's contrast
-            const colorAnalysis = iconAnalysis.colors.map(colorInfo => {
-                const originalHex = convertFigmaColorToHex(colorInfo.color);
-                const blendedHex = convertFigmaColorToHex(colorInfo.color, background);
-                const contrastRatio = calculateContrastRatio(blendedHex, backgroundHex);
-
-                return {
-                    original: originalHex,
-                    blended: blendedHex,
-                    coverage: colorInfo.coverage,
-                    contrastRatio
-                };
-            });
-
-            // Determine required ratio based on role
-            const requiredRatio = iconAnalysis.metadata.role === 'interactive' ? 4.5 : 3;
-            
-            // Check compliance
-            const failingColors = colorAnalysis
-                .filter(c => c.contrastRatio < requiredRatio)
-                .map(c => c.original);
-
-            if (failingColors.length > 0) {
-                issues.push({
-                    nodeId: iconAnalysis.metadata.nodeId,
-                    nodeName: iconAnalysis.metadata.nodeName,
-                    role: iconAnalysis.metadata.role,
-                    colors: colorAnalysis,
-                    backgroundColor: backgroundHex,
-                    requiredRatio,
-                    isCompliant: false,
-                    failingColors,
-                    recommendations: generateIconRecommendations(
-                        colorAnalysis,
-                        backgroundHex,
-                        requiredRatio,
-                        iconAnalysis
-                    )
-                });
-            }
-        }
-
-        // Traverse children
-        if ('children' in node) {
-            node.children.forEach(traverse);
-        }
-    }
-
-    traverse(node);
-    return issues;
-}
-
-/**
- * Generates recommendations for improving icon contrast
- */
-function generateIconRecommendations(
-    colorAnalysis: { original: string; blended: string; coverage: number; contrastRatio: number }[],
-    backgroundColor: string,
-    requiredRatio: number,
-    iconAnalysis: IconAnalysis
-): string[] {
-    const recommendations: string[] = [];
-
-    // Add role-specific recommendations
-    if (iconAnalysis.metadata.role === 'interactive') {
-        recommendations.push(
-            'This is an interactive icon and requires a higher contrast ratio (4.5:1). ' +
-            'Consider increasing its visibility since users need to interact with it.'
+    let parent = node.parent;
+    while (parent) {
+      if ('fills' in parent && Array.isArray(parent.fills)) {
+        const solidFills = parent.fills.filter((fill: Paint) => 
+          fill.type === 'SOLID' && fill.visible !== false
         );
+
+        if (solidFills.length > 0) {
+          const fill = solidFills[solidFills.length - 1] as SolidPaint;
+          background = blendColors(
+            { r: fill.color.r, g: fill.color.g, b: fill.color.b, a: fill.opacity || 1 },
+            background
+          );
+          
+          if (fill.opacity === 1) break; // Found opaque background
+        }
+      }
+      parent = parent.parent;
     }
 
-    // Add specific color recommendations
-    colorAnalysis.forEach(color => {
-        if (color.contrastRatio < requiredRatio) {
-            const difference = requiredRatio - color.contrastRatio;
-            recommendations.push(
-                `Increase the contrast of color ${color.original} (currently ${color.contrastRatio.toFixed(2)}:1, ` +
-                `needs ${difference.toFixed(2)} more to meet ${requiredRatio}:1 requirement).`
-            );
-        }
+    backgroundCache.set(node, background);
+    console.log(`Background color for "${node.name}":`, background);
+    return background;
+  } catch (error) {
+    console.error(`Error finding background for "${node.name}":`, error);
+    return { r: 1, g: 1, b: 1 }; // Fallback to white
+  }
+}
+
+// Color utilities
+function blendColors(top: Color, bottom: Color): Color {
+  const a = top.a ?? 1;
+  return {
+    r: (top.r * a) + (bottom.r * (1 - a)),
+    g: (top.g * a) + (bottom.g * (1 - a)),
+    b: (top.b * a) + (bottom.b * (1 - a))
+  };
+}
+
+// Contrast calculation
+function calculateContrastRatio(foreground: Color, background: Color): number {
+  const fgLuminance = getRelativeLuminance(foreground);
+  const bgLuminance = getRelativeLuminance(background);
+  
+  const lighter = Math.max(fgLuminance, bgLuminance);
+  const darker = Math.min(fgLuminance, bgLuminance);
+  
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getRelativeLuminance(color: Color): number {
+  const toLinear = (c: number) => 
+    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+
+  return 0.2126 * toLinear(color.r) +
+         0.7152 * toLinear(color.g) +
+         0.0722 * toLinear(color.b);
+}
+
+// Main analysis function
+export function analyzeIconContrast(node: SceneNode, config = defaultConfig): IconAnalysisResult | null {
+  try {
+    if (!isIconNode(node, config)) {
+      return null;
+    }
+
+    const role = determineIconRole(node, config);
+    const backgroundColor = findEffectiveBackground(node);
+    const iconColors = extractIconColors(node);
+    
+    if (iconColors.length === 0) {
+      console.warn(`No colors found for icon "${node.name}"`);
+      return null;
+    }
+
+    const contrastRatios = iconColors.map(color => 
+      calculateContrastRatio(color, backgroundColor)
+    );
+
+    const lowestContrast = Math.min(...contrastRatios);
+    const requiredContrast = config.contrastThresholds[role];
+    
+    return {
+      nodeId: node.id,
+      nodeName: node.name,
+      role,
+      colors: iconColors.map(color => ({
+        original: color,
+        blended: blendColors(color, backgroundColor),
+        contrastRatio: calculateContrastRatio(color, backgroundColor)
+      })),
+      backgroundColor,
+      contrastRatio: lowestContrast,
+      requiredRatio: requiredContrast,
+      isCompliant: lowestContrast >= requiredContrast,
+      failingColors: lowestContrast < requiredContrast ? iconColors : undefined
+    };
+
+  } catch (error) {
+    console.error(`Error analyzing icon "${node.name}":`, error);
+    return null;
+  }
+}
+
+function extractIconColors(node: SceneNode): Color[] {
+  const colors: Color[] = [];
+
+  if ('fills' in node && Array.isArray(node.fills)) {
+    node.fills.forEach((fill: Paint) => {
+      if (fill.type === 'SOLID' && fill.visible !== false) {
+        colors.push({
+          r: fill.color.r,
+          g: fill.color.g,
+          b: fill.color.b,
+          a: fill.opacity
+        });
+      }
     });
+  }
 
-    // Add general recommendations
-    if (recommendations.length > 0) {
-        recommendations.push(
-            'Consider one of these approaches:',
-            '1. Increase the color contrast by adjusting the icon color',
-            '2. Add a background shape behind the icon',
-            '3. Increase the icon size to improve visibility',
-            '4. If the icon is decorative, consider marking it as such (#decorative)'
-        );
-    }
+  if ('strokes' in node && Array.isArray(node.strokes)) {
+    node.strokes.forEach((stroke: Paint) => {
+      if (stroke.type === 'SOLID' && stroke.visible !== false) {
+        colors.push({
+          r: stroke.color.r,
+          g: stroke.color.g,
+          b: stroke.color.b,
+          a: stroke.opacity
+        });
+      }
+    });
+  }
 
-    return recommendations;
+  // Recursively check children
+  if ('children' in node) {
+    node.children.forEach(child => {
+      colors.push(...extractIconColors(child));
+    });
+  }
+
+  return colors;
 }
+
+// Export both the main function and testing utilities
+export { analyzeIconContrast as evaluateIconContrast };
+export const __testing = {
+  isIconNode,
+  determineIconRole,
+  findEffectiveBackground,
+  calculateContrastRatio,
+  extractIconColors
+};

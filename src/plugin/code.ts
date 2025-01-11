@@ -28,8 +28,8 @@ interface AnalysisIssue {
 }
 
 figma.showUI(__html__, {
-  width: 450,
-  height: 550
+  width: 400,
+  height: 750
 });
 
 console.log('UI shown');
@@ -49,6 +49,67 @@ figma.on('selectionchange', () => {
   });
 });
 
+// Recursive function to analyze nodes and their children
+function analyzeNode(node: SceneNode): AnalysisIssue[] {
+  const issues: AnalysisIssue[] = [];
+  
+  console.log(`Analyzing node: "${node.name}" (type: ${node.type})`);
+  
+  // Check text contrast
+  const textContrastIssues = evaluateTextContrast(node);
+  if (textContrastIssues.length > 0) {
+    console.log(`Found ${textContrastIssues.length} text contrast issues`);
+    issues.push(...textContrastIssues.map(issue => ({
+      type: 'text-contrast' as const,
+      ...issue,
+      category: 'Color Contrast',
+      title: 'Insufficient Text Contrast',
+      description: `Text contrast ratio is ${issue.contrastRatio?.toFixed(2)}:1 (required ≥${issue.requiredRatio}:1)`,
+      severity: (issue.contrastRatio && issue.contrastRatio < issue.requiredRatio! * 0.5) ? 'high' as const : 'medium' as const
+    })));
+  }
+
+  // Check icon contrast
+  console.log(`Checking icon contrast for "${node.name}"`);
+  const iconContrastResult = evaluateIconContrast(node);
+  if (iconContrastResult) {
+    console.log(`Icon contrast result for "${node.name}":`, iconContrastResult);
+    if (!iconContrastResult.isCompliant) {
+      console.log(`Found icon contrast issue for "${node.name}"`);
+      issues.push({
+        type: 'icon-contrast' as const,
+        nodeId: iconContrastResult.nodeId,
+        nodeName: iconContrastResult.nodeName,
+        category: 'Color Contrast',
+        title: 'Insufficient Icon Contrast',
+        description: `Icon requires ${iconContrastResult.requiredRatio}:1 contrast ratio for ${iconContrastResult.role} use`,
+        severity: iconContrastResult.role === 'interactive' ? 'high' as const : 'medium' as const,
+        role: iconContrastResult.role,
+        colors: iconContrastResult.colors.map(color => ({
+          original: `rgb(${Math.round(color.original.r * 255)}, ${Math.round(color.original.g * 255)}, ${Math.round(color.original.b * 255)})`,
+          blended: `rgb(${Math.round(color.blended.r * 255)}, ${Math.round(color.blended.g * 255)}, ${Math.round(color.blended.b * 255)})`,
+          coverage: 1, // We don't track coverage for icons
+          contrastRatio: color.contrastRatio
+        })),
+        failingColors: iconContrastResult.failingColors?.map(color => 
+          `rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)})`
+        ),
+        isCompliant: iconContrastResult.isCompliant
+      });
+    }
+  }
+
+  // Recursively check children
+  if ('children' in node) {
+    console.log(`Checking ${node.children.length} children of "${node.name}"`);
+    node.children.forEach(child => {
+      issues.push(...analyzeNode(child));
+    });
+  }
+
+  return issues;
+}
+
 // Handle messages from the UI
 figma.ui.onmessage = async (msg) => {
   if (msg.type === 'analyze-selection') {
@@ -59,50 +120,26 @@ figma.ui.onmessage = async (msg) => {
       return;
     }
 
-    const issues: AnalysisIssue[] = [];
-    
-    // Analyze each selected node
-    selection.forEach(node => {
-      // Check text contrast
-      const textContrastIssues = evaluateTextContrast(node);
-      if (textContrastIssues.length > 0) {
-        issues.push(...textContrastIssues.map(issue => ({
-          type: 'text-contrast' as const,
-          ...issue,
-          category: 'Color Contrast',
-          title: 'Insufficient Text Contrast',
-          description: `Text contrast ratio is ${issue.contrastRatio?.toFixed(2)}:1 (required ≥${issue.requiredRatio}:1)`,
-          severity: (issue.contrastRatio && issue.contrastRatio < issue.requiredRatio! * 0.5) ? 'high' as const : 'medium' as const
-        })));
-      }
+    try {
+      const issues: AnalysisIssue[] = [];
+      
+      // Analyze each selected node and its children
+      selection.forEach(node => {
+        issues.push(...analyzeNode(node));
+      });
 
-      // Check icon contrast
-      const iconContrastIssues = evaluateIconContrast(node);
-      if (iconContrastIssues.length > 0) {
-        issues.push(...iconContrastIssues.map(issue => ({
-          type: 'icon-contrast' as const,
-          nodeId: issue.nodeId,
-          nodeName: issue.nodeName,
-          category: 'Color Contrast',
-          title: 'Insufficient Icon Contrast',
-          description: `Icon requires ${issue.requiredRatio}:1 contrast ratio for ${issue.role} use`,
-          severity: issue.role === 'interactive' ? 'high' as const : 'medium' as const,
-          role: issue.role,
-          colors: issue.colors,
-          backgroundColor: issue.backgroundColor,
-          requiredRatio: issue.requiredRatio,
-          isCompliant: issue.isCompliant,
-          failingColors: issue.failingColors,
-          recommendations: issue.recommendations
-        })));
-      }
-    });
-
-    // Send results back to UI
-    figma.ui.postMessage({
-      type: 'analysis-results',
-      issues
-    });
+      // Send results back to UI
+      figma.ui.postMessage({
+        type: 'analysis-results',
+        issues
+      });
+    } catch (error) {
+      console.error('Error analyzing contrast:', error);
+      figma.ui.postMessage({
+        type: 'error',
+        message: 'Error analyzing contrast: ' + (error as Error).message
+      });
+    }
   }
 
   if (msg.type === 'resize') {

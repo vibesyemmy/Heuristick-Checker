@@ -10,8 +10,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: '100vh',
-      padding: theme.spacing.md,
+      height: '100%',
+      padding: '24px 8px 16px 8px',
       gap: theme.spacing.md,
       background: theme.colors.background,
       color: theme.colors.text,

@@ -2,9 +2,11 @@ export const theme = {
   colors: {
     primary: '#18A0FB', // Figma's brand blue
     primaryHover: '#1089D9',
-    text: 'var(--figma-color-text)',
-    background: 'var(--figma-color-bg)',
-    border: 'var(--figma-color-border)',
+    text: '#FFFFFF',
+    textSecondary: '#A0A0A0',
+    background: '#1E1E1E',
+    backgroundSecondary: '#2C2C2C',
+    border: '#333333',
     danger: '#F44336',
     warning: '#FFC107',
     success: '#4CAF50',
@@ -18,17 +20,23 @@ export const theme = {
     xl: '32px'
   },
   typography: {
-    fontFamily: 'Inter, sans-serif',
+    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
     sizes: {
-      small: '11px',
+      small: '12px',
       body: '13px',
-      heading: '14px',
-      large: '16px'
+      button: '16px',
+      heading: '24px'
+    },
+    weights: {
+      regular: 400,
+      medium: 500,
+      semibold: 600,
+      bold: 700
     }
   },
   borderRadius: {
     small: '4px',
     medium: '6px',
-    large: '8px'
+    large: '12px'
   }
 };

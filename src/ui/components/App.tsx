@@ -2,6 +2,7 @@ import * as React from 'react';
 import { Layout } from './layout/Layout';
 import { Results, HeuristicResult } from './results/Results';
 import { theme } from '../styles/theme';
+import infoIcon from '../img/info.svg';
 
 interface AppState {
   isLoading: boolean;
@@ -76,66 +77,81 @@ export class App extends React.Component<{}, AppState> {
           display: 'flex',
           flexDirection: 'column',
           height: '100%',
-          gap: theme.spacing.md
+          gap: theme.spacing.md,
+          flex: 1
         }}>
           {/* Header with scan button */}
           <div style={{
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-            background: 'var(--figma-color-bg-secondary)',
-            borderRadius: theme.borderRadius.medium
+            flexDirection: 'column',
+            gap: theme.spacing.md
           }}>
-            <div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '24px'
+            }}>
               <h2 style={{
                 margin: 0,
-                fontSize: theme.typography.sizes.heading,
-                fontWeight: 500
+                fontSize: '24px',
+                fontFamily: 'Inter',
+                fontWeight: 700,
+                lineHeight: '32px'
               }}>
                 Heuristic Checker
               </h2>
               <p style={{
-                margin: `${theme.spacing.xs} 0 0 0`,
-                fontSize: theme.typography.sizes.small,
-                color: 'var(--figma-color-text-secondary)'
-              }}>
-                {selectedElement ? 
-                  `Selected: ${selectedElement.name} (${selectedElement.type})` : 
-                  'Select an element to analyze'}
-              </p>
-            </div>
-            <button
-              onClick={this.handleScanElement}
-              disabled={!selectedElement || isLoading}
-              style={{
-                padding: `${theme.spacing.sm} ${theme.spacing.md}`,
-                background: theme.colors.primary,
-                color: 'white',
-                border: 'none',
-                borderRadius: theme.borderRadius.medium,
-                cursor: selectedElement && !isLoading ? 'pointer' : 'not-allowed',
-                opacity: selectedElement && !isLoading ? 1 : 0.5,
-                fontSize: theme.typography.sizes.body,
+                margin: 0,
+                fontSize: '12px',
+                color: theme.colors.textSecondary,
                 display: 'flex',
                 alignItems: 'center',
-                gap: theme.spacing.sm,
-                fontWeight: 500,
-                transition: 'background-color 0.2s ease'
-              }}
-              onMouseEnter={(e) => {
-                if (selectedElement && !isLoading) {
-                  e.currentTarget.style.background = theme.colors.primaryHover;
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (selectedElement && !isLoading) {
-                  e.currentTarget.style.background = theme.colors.primary;
-                }
-              }}
-            >
-              {isLoading ? 'Analyzing...' : 'Scan Element'}
-            </button>
+                gap: '4px'
+              }}>
+                <img 
+                  src={infoIcon} 
+                  alt="Info"
+                  style={{ 
+                    width: '16px', 
+                    height: '16px' 
+                  }}
+                />
+                {selectedElement
+                  ? `Selected element: ${selectedElement.name} (${selectedElement.type})`
+                  : 'Select an element to analyze'}
+              </p>
+            </div>
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '32px'
+            }}>
+              <button
+                onClick={this.handleScanElement}
+                disabled={!selectedElement || isLoading}
+                style={{
+                  background: theme.colors.primary,
+                  color: 'white',
+                  border: 'none',
+                  height: '48px',
+                  borderRadius: theme.borderRadius.large,
+                  cursor: 'pointer',
+                  fontSize: theme.typography.sizes.button,
+                  fontFamily: theme.typography.fontFamily,
+                  fontWeight: theme.typography.weights.semibold,
+                  width: '100%',
+                  transition: 'background-color 0.2s'
+                }}
+              >
+                {isLoading ? 'Analyzing...' : 'Scan Element'}
+              </button>
+
+              <Results
+                results={results}
+                onExport={results.length > 0 ? this.handleExportResults : undefined}
+                message={message || undefined}
+              />
+            </div>
           </div>
 
           {/* Error message */}
@@ -150,15 +166,6 @@ export class App extends React.Component<{}, AppState> {
               {error}
             </div>
           )}
-
-          {/* Results section */}
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <Results
-              results={results}
-              onExport={results.length > 0 ? this.handleExportResults : undefined}
-              message={message || undefined}
-            />
-          </div>
         </div>
       </Layout>
     );
