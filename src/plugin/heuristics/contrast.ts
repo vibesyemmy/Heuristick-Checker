@@ -1,6 +1,6 @@
 import Color from 'color';
 
-interface ContrastIssue {
+export interface ContrastIssue {
   nodeId: string;
   nodeName: string;
   textColor: string;
@@ -16,14 +16,14 @@ interface ContrastIssue {
   effectiveOpacity?: number;
 }
 
-interface FigmaColor {
+export interface FigmaColor {
   r: number;
   g: number;
   b: number;
   a?: number;
 }
 
-interface ColorWithOpacity {
+export interface ColorWithOpacity {
   color: FigmaColor;
   fillOpacity: number;
   layerOpacity: number;
@@ -55,49 +55,197 @@ function rgbToHex(color: RGBColor): string {
   return Color.rgb(color.r, color.g, color.b).toString();
 }
 
-export function convertFigmaColorToHex(colorInfo: ColorWithOpacity, backgroundColor?: ColorWithOpacity): string {
-  const { color, fillOpacity, layerOpacity } = colorInfo;
+export function convertFigmaColorToHex(color: ColorWithOpacity, background?: ColorWithOpacity): string {
+  const { r, g, b } = color.color;
+  const effectiveOpacity = color.fillOpacity * color.layerOpacity;
   
-  const effectiveOpacity = fillOpacity * layerOpacity * (color.a ?? 1);
-  
-  const foregroundRGB = figmaColorToRGB(color);
-  
-  if (effectiveOpacity < 1 && backgroundColor) {
-    const backgroundRGB = figmaColorToRGB(backgroundColor.color);
+  if (background && effectiveOpacity < 1) {
+    // Alpha blend with background
+    const { r: bgR, g: bgG, b: bgB } = background.color;
+    const bgEffectiveOpacity = background.fillOpacity * background.layerOpacity;
     
-    const blendedColor = alphaBlend(foregroundRGB, backgroundRGB, effectiveOpacity);
+    const blendedR = (r * effectiveOpacity) + (bgR * bgEffectiveOpacity * (1 - effectiveOpacity));
+    const blendedG = (g * effectiveOpacity) + (bgG * bgEffectiveOpacity * (1 - effectiveOpacity));
+    const blendedB = (b * effectiveOpacity) + (bgB * bgEffectiveOpacity * (1 - effectiveOpacity));
     
-    console.log('Color blending:', {
-      foreground: foregroundRGB,
-      background: backgroundRGB,
-      opacity: effectiveOpacity,
-      blended: blendedColor
-    });
-    
-    return rgbToHex(blendedColor);
+    return Color.rgb(
+      Math.round(blendedR * 255),
+      Math.round(blendedG * 255),
+      Math.round(blendedB * 255)
+    ).hex();
   }
   
-  return rgbToHex(foregroundRGB);
+  return Color.rgb(
+    Math.round(r * 255),
+    Math.round(g * 255),
+    Math.round(b * 255)
+  ).hex();
 }
 
-export function calculateContrastRatio(textColor: string, backgroundColor: string): number {
-  const text = Color(textColor);
-  const background = Color(backgroundColor);
+export function calculateContrastRatio(color1: string, color2: string): number {
+  const c1 = Color(color1);
+  const c2 = Color(color2);
   
-  const ratio = text.contrast(background);
+  const l1 = c1.luminosity();
+  const l2 = c2.luminosity();
   
-  console.log('Contrast calculation:', {
-    text: text.toString(),
-    background: background.toString(),
-    ratio
+  const lightest = Math.max(l1, l2);
+  const darkest = Math.min(l1, l2);
+  
+  return (lightest + 0.05) / (darkest + 0.05);
+}
+
+interface BackgroundLayer {
+  color: FigmaColor;
+  fillOpacity: number;
+  layerOpacity: number;
+  nodeName: string;  // For debugging
+}
+
+function blendColors(foreground: FigmaColor, background: FigmaColor, alpha: number): FigmaColor {
+  return {
+    r: alpha * foreground.r + (1 - alpha) * background.r,
+    g: alpha * foreground.g + (1 - alpha) * background.g,
+    b: alpha * foreground.b + (1 - alpha) * background.b
+  };
+}
+
+function blendBackgroundLayers(layers: BackgroundLayer[]): ColorWithOpacity {
+  if (layers.length === 0) {
+    return {
+      color: { r: 1, g: 1, b: 1 },
+      fillOpacity: 1,
+      layerOpacity: 1
+    };
+  }
+
+  // Start with the bottommost layer (canvas or lowest background)
+  let result = { ...layers[0].color };
+  let currentAlpha = layers[0].fillOpacity * layers[0].layerOpacity;
+
+  // Blend each subsequent layer using the correct alpha compositing formula
+  for (let i = 1; i < layers.length; i++) {
+    const layer = layers[i];
+    const layerAlpha = layer.fillOpacity * layer.layerOpacity;
+    
+    // Use the alpha blending formula: αFg * Fg + (1 - αFg) * Bg
+    result = blendColors(layer.color, result, layerAlpha);
+
+    console.log(`Blending layer ${i}:`, {
+      layerName: layer.nodeName,
+      layerColor: layer.color,
+      layerAlpha,
+      currentResult: result
+    });
+  }
+
+  return {
+    color: result,
+    fillOpacity: 1,  // The result is now fully opaque
+    layerOpacity: 1
+  };
+}
+
+function getCanvasBackground(): BackgroundLayer {
+  // Get the page node first, as it has the backgrounds property
+  const page = figma.currentPage;
+  const backgrounds = page.backgrounds;
+  
+  // Check if backgrounds exist and are not mixed
+  if (backgrounds) {
+    const visibleBackgrounds = backgrounds.filter((bg: Paint) => bg.visible !== false);
+    if (visibleBackgrounds.length > 0) {
+      const bg = visibleBackgrounds[0];
+      if (bg.type === 'SOLID') {
+        return {
+          color: bg.color,
+          fillOpacity: bg.opacity ?? 1,
+          layerOpacity: 1,
+          nodeName: 'Canvas'
+        };
+      }
+    }
+  }
+  
+  // If no canvas background is set or it's not a solid color,
+  // return white as the absolute fallback
+  return {
+    color: { r: 1, g: 1, b: 1 },
+    fillOpacity: 1,
+    layerOpacity: 1,
+    nodeName: 'Default White'
+  };
+}
+
+function getNodeFillOpacity(fill: Paint): number {
+  // If opacity is set in the UI as a percentage (e.g., 10%), 
+  // Figma's API will return it as a decimal (0.1)
+  return fill.opacity ?? 1;
+}
+
+function getNodeLayerOpacity(node: BaseNode & { opacity?: number }): number {
+  return node.opacity ?? 1;
+}
+
+export function findOpaqueBackground(node: BaseNode): ColorWithOpacity {
+  const backgroundLayers: BackgroundLayer[] = [];
+  let parent = node.parent;
+  let foundOpaqueBackground = false;
+  
+  while (parent && !foundOpaqueBackground) {
+    if ('fills' in parent && parent.fills && parent.fills !== figma.mixed) {
+      const fills = (parent.fills as Paint[]).filter(fill => fill.visible !== false);
+      
+      for (const fill of fills) {
+        if (fill.type === 'SOLID') {
+          const parentOpacity = getNodeLayerOpacity(parent);
+          const fillOpacity = getNodeFillOpacity(fill);
+          
+          // Add this background layer to our collection
+          backgroundLayers.unshift({  // Add to front so bottom-most is first
+            color: fill.color,
+            fillOpacity: fillOpacity,
+            layerOpacity: parentOpacity,
+            nodeName: parent.name
+          });
+
+          console.log('Found background layer:', {
+            name: parent.name,
+            color: fill.color,
+            fillOpacity: `${(fillOpacity * 100).toFixed(1)}%`,  // Log as percentage for clarity
+            layerOpacity: `${(parentOpacity * 100).toFixed(1)}%`
+          });
+
+          // Stop if this background is fully opaque
+          if (fillOpacity === 1 && parentOpacity === 1) {
+            console.log('Found fully opaque background, stopping traversal');
+            foundOpaqueBackground = true;
+            break;
+          }
+        }
+      }
+    }
+    parent = parent.parent;
+  }
+
+  // If no backgrounds found or we haven't hit an opaque background,
+  // add the canvas background as the bottom layer
+  if (backgroundLayers.length === 0 || !foundOpaqueBackground) {
+    const canvasBackground = getCanvasBackground();
+    backgroundLayers.unshift(canvasBackground);
+    console.log('Added canvas background:', canvasBackground);
+  }
+
+  // Blend all background layers
+  const blendedBackground = blendBackgroundLayers(backgroundLayers);
+  
+  console.log('Final blended background:', {
+    layers: backgroundLayers.length,
+    foundOpaqueBackground,
+    result: blendedBackground
   });
-  
-  return ratio;
-}
 
-export function getRequiredContrast(fontSize: number, isBold: boolean): number {
-  const largeText = fontSize >= 18 || (fontSize >= 14 && isBold);
-  return largeText ? 3 : 4.5;
+  return blendedBackground;
 }
 
 function getTextNodeFillColor(node: TextNode): ColorWithOpacity | null {
@@ -120,81 +268,6 @@ function getTextNodeFillColor(node: TextNode): ColorWithOpacity | null {
     }
   }
   return null;
-}
-
-function findOpaqueBackground(node: BaseNode): ColorWithOpacity | null {
-  let parent = node.parent;
-  let accumulatedOpacity = 1;
-  
-  while (parent) {
-    if ('fills' in parent && parent.fills && parent.fills !== figma.mixed) {
-      const fills = (parent.fills as Paint[]).filter(fill => fill.visible !== false);
-      if (fills.length > 0) {
-        const fill = fills[0];
-        if (fill.type === 'SOLID') {
-          const parentOpacity = 'opacity' in parent ? parent.opacity ?? 1 : 1;
-          const fillOpacity = fill.opacity ?? 1;
-          
-          accumulatedOpacity *= parentOpacity * fillOpacity;
-          
-          if (accumulatedOpacity === 1 || !parent.parent) {
-            console.log('Found background:', {
-              name: parent.name,
-              color: fill.color,
-              opacity: accumulatedOpacity
-            });
-            
-            return {
-              color: fill.color,
-              fillOpacity: fillOpacity,
-              layerOpacity: parentOpacity
-            };
-          }
-        }
-      }
-    }
-    parent = parent.parent;
-  }
-  
-  return {
-    color: { r: 1, g: 1, b: 1 },
-    fillOpacity: 1,
-    layerOpacity: 1
-  };
-}
-
-function generateRecommendations(
-  contrastRatio: number,
-  requiredRatio: number,
-  textColor: string,
-  backgroundColor: string,
-  blendedTextColor: string | undefined,
-  effectiveOpacity: number
-): string[] {
-  const recommendations: string[] = [];
-  
-  if (contrastRatio < requiredRatio) {
-    recommendations.push(`Increase contrast ratio from ${contrastRatio.toFixed(2)}:1 to at least ${requiredRatio}:1`);
-    
-    if (effectiveOpacity < 1) {
-      const opacityPercent = Math.round(effectiveOpacity * 100);
-      recommendations.push(
-        `Text opacity is ${opacityPercent}%, which blends with the background and reduces contrast. ` +
-        `Original color: ${textColor}, Blended appearance: ${blendedTextColor}`
-      );
-    }
-    
-    const textColorObj = Color(blendedTextColor || textColor);
-    const bgColorObj = Color(backgroundColor);
-    
-    if (textColorObj.luminosity() > bgColorObj.luminosity()) {
-      recommendations.push('Try using a darker text color or lighter background');
-    } else {
-      recommendations.push('Try using a lighter text color or darker background');
-    }
-  }
-  
-  return recommendations;
 }
 
 export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
@@ -268,4 +341,43 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
 
   traverse(node);
   return issues;
+}
+
+function generateRecommendations(
+  contrastRatio: number,
+  requiredRatio: number,
+  textColor: string,
+  backgroundColor: string,
+  blendedTextColor: string | undefined,
+  effectiveOpacity: number
+): string[] {
+  const recommendations: string[] = [];
+  
+  if (contrastRatio < requiredRatio) {
+    recommendations.push(`Increase contrast ratio from ${contrastRatio.toFixed(2)}:1 to at least ${requiredRatio}:1`);
+    
+    if (effectiveOpacity < 1) {
+      const opacityPercent = Math.round(effectiveOpacity * 100);
+      recommendations.push(
+        `Text opacity is ${opacityPercent}%, which blends with the background and reduces contrast. ` +
+        `Original color: ${textColor}, Blended appearance: ${blendedTextColor}`
+      );
+    }
+    
+    const textColorObj = Color(blendedTextColor || textColor);
+    const bgColorObj = Color(backgroundColor);
+    
+    if (textColorObj.luminosity() > bgColorObj.luminosity()) {
+      recommendations.push('Try using a darker text color or lighter background');
+    } else {
+      recommendations.push('Try using a lighter text color or darker background');
+    }
+  }
+  
+  return recommendations;
+}
+
+function getRequiredContrast(fontSize: number, isBold: boolean): number {
+  const largeText = fontSize >= 18 || (fontSize >= 14 && isBold);
+  return largeText ? 3 : 4.5;
 }
