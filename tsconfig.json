@@ -1,17 +1,15 @@
 {
   "compilerOptions": {
     "target": "es6",
-    "lib": ["es6", "dom", "es2017"],
-    "jsx": "react",
-    "module": "es6",
+    "lib": ["es6", "dom"],
     "moduleResolution": "node",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
+    "jsx": "react",
     "strict": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "typeRoots": ["./node_modules/@types", "./node_modules/@figma"]
+    "typeRoots": [
+      "./node_modules/@types",
+      "./node_modules/@figma"
+    ],
+    "esModuleInterop": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]

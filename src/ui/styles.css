@@ -1,0 +1,30 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Inter, sans-serif;
+  font-size: 11px;
+  background: var(--figma-color-bg);
+  color: var(--figma-color-text);
+}
+
+main {
+  padding: 16px;
+}
+
+header {
+  margin-bottom: 16px;
+}
+
+h2 {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+p {
+  margin-bottom: 8px;
+}
