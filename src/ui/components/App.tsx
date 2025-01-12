@@ -14,6 +14,7 @@ interface AppState {
   } | null;
   results: HeuristicResult[];
   message: string | null;
+  hasScanned: boolean;
 }
 
 export class App extends React.Component<{}, AppState> {
@@ -24,7 +25,8 @@ export class App extends React.Component<{}, AppState> {
       error: null,
       selectedElement: null,
       results: [],
-      message: null
+      message: null,
+      hasScanned: false
     };
   }
 
@@ -38,20 +40,23 @@ export class App extends React.Component<{}, AppState> {
         case 'selection-change':
           this.setState({
             selectedElement: message.elements[0] || null
+            // Don't reset results or hasScanned here
           });
           break;
         case 'analysis-complete':
           this.setState({
             results: message.results,
             isLoading: false,
-            message: message.message || null
+            message: message.message || null,
+            hasScanned: true
           });
           break;
         case 'error':
           this.setState({
             error: message.message,
             isLoading: false,
-            message: null
+            message: null,
+            hasScanned: true
           });
           break;
       }
@@ -59,7 +64,14 @@ export class App extends React.Component<{}, AppState> {
   }
 
   handleScanElement = () => {
-    this.setState({ isLoading: true, error: null, message: null });
+    // Reset results only when starting a new scan
+    this.setState({ 
+      isLoading: true, 
+      error: null, 
+      message: null,
+      results: [], // Clear previous results
+      hasScanned: true 
+    });
     parent.postMessage({ pluginMessage: { type: 'scan-element' } }, '*');
   };
 
@@ -69,7 +81,7 @@ export class App extends React.Component<{}, AppState> {
   };
 
   render() {
-    const { isLoading, error, selectedElement, results, message } = this.state;
+    const { isLoading, error, selectedElement, results, message, hasScanned } = this.state;
 
     return (
       <Layout>
@@ -116,9 +128,14 @@ export class App extends React.Component<{}, AppState> {
                     height: '16px' 
                   }}
                 />
-                {selectedElement
-                  ? `Selected element: ${selectedElement.name} (${selectedElement.type})`
-                  : 'Select an element to analyze'}
+                {selectedElement ? (
+                  <>
+                    Selected element: <span style={{ 
+                      color: 'white', 
+                      fontWeight: 600 
+                    }}>{selectedElement.name} ({selectedElement.type})</span>
+                  </>
+                ) : 'Select an element to analyze'}
               </p>
             </div>
             <div style={{
@@ -146,26 +163,16 @@ export class App extends React.Component<{}, AppState> {
                 {isLoading ? 'Analyzing...' : 'Scan Element'}
               </button>
 
-              <Results
+              <Results 
                 results={results}
+                selectedElement={!!selectedElement}
+                hasScanned={hasScanned}
                 onExport={results.length > 0 ? this.handleExportResults : undefined}
                 message={message || undefined}
+                error={error || undefined}
               />
             </div>
           </div>
-
-          {/* Error message */}
-          {error && (
-            <div style={{
-              padding: theme.spacing.md,
-              color: theme.colors.danger,
-              background: `${theme.colors.danger}15`,
-              borderRadius: theme.borderRadius.medium,
-              fontSize: theme.typography.sizes.small
-            }}>
-              {error}
-            </div>
-          )}
         </div>
       </Layout>
     );

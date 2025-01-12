@@ -14,6 +14,11 @@ export interface ContrastIssue {
   level?: 'AAA' | 'AA' | 'Fail';
   recommendations?: string[];
   effectiveOpacity?: number;
+  hasMixedWeights?: boolean;
+  fontWeightSegments?: FontWeightSegment[];
+  lowestWeight?: number;
+  highestWeight?: number;
+  weightAnalysisNote?: string;
 }
 
 export interface FigmaColor {
@@ -33,6 +38,16 @@ interface RGBColor {
   r: number;
   g: number;
   b: number;
+}
+
+export interface FontWeightSegment {
+  text: string;
+  weight: number;
+  fontSize: number;
+  position: {
+    start: number;
+    end: number;
+  };
 }
 
 function alphaBlend(foreground: RGBColor, background: RGBColor, alpha: number): RGBColor {
@@ -270,6 +285,111 @@ function getTextNodeFillColor(node: TextNode): ColorWithOpacity | null {
   return null;
 }
 
+function analyzeFontWeights(node: TextNode): {
+  segments: FontWeightSegment[];
+  lowestWeight: number;
+  highestWeight: number;
+  hasMixedWeights: boolean;
+} {
+  const segments: FontWeightSegment[] = [];
+  const characters = node.getStyledTextSegments(['fontWeight', 'fontSize']);
+  
+  if (characters.length === 0) {
+    return {
+      segments: [],
+      lowestWeight: 400,
+      highestWeight: 400,
+      hasMixedWeights: false
+    };
+  }
+
+  const weights = new Set<number>();
+  
+  characters.forEach(char => {
+    const weight = typeof char.fontWeight === 'number' ? char.fontWeight : 400;
+    const size = typeof char.fontSize === 'number' ? char.fontSize : 14;
+    weights.add(weight);
+    
+    segments.push({
+      text: char.characters,
+      weight,
+      fontSize: size,
+      position: {
+        start: char.start,
+        end: char.end
+      }
+    });
+  });
+
+  const weightArray = Array.from(weights);
+  
+  return {
+    segments,
+    lowestWeight: Math.min(...weightArray),
+    highestWeight: Math.max(...weightArray),
+    hasMixedWeights: weightArray.length > 1
+  };
+}
+
+function generateRecommendations(
+  contrastRatio: number,
+  requiredRatio: number,
+  textColor: string,
+  backgroundColor: string,
+  blendedTextColor: string | undefined,
+  effectiveOpacity: number,
+  hasMixedWeights?: boolean,
+  fontWeightSegments?: FontWeightSegment[],
+  lowestWeight?: number,
+  highestWeight?: number
+): string[] {
+  const recommendations: string[] = [];
+  
+  if (contrastRatio < requiredRatio) {
+    recommendations.push(`Increase contrast ratio from ${contrastRatio.toFixed(2)}:1 to at least ${requiredRatio}:1`);
+    
+    if (effectiveOpacity < 1) {
+      const opacityPercent = Math.round(effectiveOpacity * 100);
+      recommendations.push(
+        `Text opacity is ${opacityPercent}%, which blends with the background and reduces contrast. ` +
+        `Original color: ${textColor}, Blended appearance: ${blendedTextColor}`
+      );
+    }
+    
+    if (hasMixedWeights && fontWeightSegments && lowestWeight && highestWeight) {
+      recommendations.push(
+        `This text uses mixed font weights (${lowestWeight} to ${highestWeight}). ` +
+        `Some parts of the text may be harder to read:`
+      );
+      
+      fontWeightSegments.forEach(segment => {
+        if (segment.weight < 700) {  // If this segment is not bold
+          recommendations.push(
+            `- "${segment.text}" uses weight ${segment.weight}, ` +
+            `which may need higher contrast at ${segment.fontSize}px`
+          );
+        }
+      });
+      
+      recommendations.push(
+        'Consider either increasing contrast for all text or using a consistent bold weight ' +
+        'for better readability'
+      );
+    }
+    
+    const textColorObj = Color(blendedTextColor || textColor);
+    const bgColorObj = Color(backgroundColor);
+    
+    if (textColorObj.luminosity() > bgColorObj.luminosity()) {
+      recommendations.push('Try making the text darker');
+    } else {
+      recommendations.push('Try making the text lighter');
+    }
+  }
+  
+  return recommendations;
+}
+
 export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
   const issues: ContrastIssue[] = [];
 
@@ -286,22 +406,14 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
         
         const blendedTextHex = convertFigmaColorToHex(textFill, backgroundFill);
         
+        const fontWeights = analyzeFontWeights(node);
         const fontSize = node.fontSize as number || 14;
-        const isBold = (node.fontWeight as number) >= 700;
+        // Use lowest weight for most conservative calculation
+        const isBold = fontWeights.lowestWeight >= 700;
         
         const contrastRatio = calculateContrastRatio(blendedTextHex, backgroundHex);
         const requiredRatio = getRequiredContrast(fontSize, isBold);
         const isCompliant = contrastRatio >= requiredRatio;
-
-        console.log('Node evaluation:', {
-          name: node.name,
-          originalColor: originalTextHex,
-          blendedColor: blendedTextHex,
-          effectiveOpacity,
-          contrastRatio,
-          requiredRatio,
-          isCompliant
-        });
 
         if (!isCompliant) {
           const level = contrastRatio >= 7 ? 'AAA' : contrastRatio >= requiredRatio ? 'AA' : 'Fail';
@@ -319,15 +431,27 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
             isCompliant,
             level,
             effectiveOpacity,
-            recommendations: generateRecommendations(
-              contrastRatio,
-              requiredRatio,
-              originalTextHex,
-              backgroundHex,
-              blendedTextHex,
-              effectiveOpacity
-            )
+            hasMixedWeights: fontWeights.hasMixedWeights,
+            fontWeightSegments: fontWeights.segments,
+            lowestWeight: fontWeights.lowestWeight,
+            highestWeight: fontWeights.highestWeight,
+            weightAnalysisNote: fontWeights.hasMixedWeights 
+              ? `Using most conservative font weight (${fontWeights.lowestWeight}) for contrast calculation`
+              : undefined
           };
+
+          issue.recommendations = generateRecommendations(
+            contrastRatio,
+            requiredRatio,
+            originalTextHex,
+            backgroundHex,
+            blendedTextHex,
+            effectiveOpacity,
+            fontWeights.hasMixedWeights,
+            fontWeights.segments,
+            fontWeights.lowestWeight,
+            fontWeights.highestWeight
+          );
 
           issues.push(issue);
         }
@@ -335,46 +459,14 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
     }
 
     if ('children' in node) {
-      (node.children as SceneNode[]).forEach(child => traverse(child));
+      for (const child of node.children) {
+        traverse(child);
+      }
     }
   }
 
   traverse(node);
   return issues;
-}
-
-function generateRecommendations(
-  contrastRatio: number,
-  requiredRatio: number,
-  textColor: string,
-  backgroundColor: string,
-  blendedTextColor: string | undefined,
-  effectiveOpacity: number
-): string[] {
-  const recommendations: string[] = [];
-  
-  if (contrastRatio < requiredRatio) {
-    recommendations.push(`Increase contrast ratio from ${contrastRatio.toFixed(2)}:1 to at least ${requiredRatio}:1`);
-    
-    if (effectiveOpacity < 1) {
-      const opacityPercent = Math.round(effectiveOpacity * 100);
-      recommendations.push(
-        `Text opacity is ${opacityPercent}%, which blends with the background and reduces contrast. ` +
-        `Original color: ${textColor}, Blended appearance: ${blendedTextColor}`
-      );
-    }
-    
-    const textColorObj = Color(blendedTextColor || textColor);
-    const bgColorObj = Color(backgroundColor);
-    
-    if (textColorObj.luminosity() > bgColorObj.luminosity()) {
-      recommendations.push('Try using a darker text color or lighter background');
-    } else {
-      recommendations.push('Try using a lighter text color or darker background');
-    }
-  }
-  
-  return recommendations;
 }
 
 function getRequiredContrast(fontSize: number, isBold: boolean): number {

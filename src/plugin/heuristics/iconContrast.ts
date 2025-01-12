@@ -34,7 +34,14 @@ interface IconAnalysisResult {
 // Configuration
 const defaultConfig: IconDetectionConfig = {
   maxSize: 48,
-  namePatterns: ['icon', 'ico', 'info', 'i', 'delete', 'add', 'close', 'menu'],
+  namePatterns: [
+    'icon', 'ico', 'info', 'i', 
+    'delete', 'add', 'close', 'menu',
+    'arrow', 'chevron', 'button', 'btn',
+    'symbol', 'logo', 'image', 'img',
+    'search', 'notification', 'bell',
+    'check', 'cross', 'star', 'heart'
+  ],
   roleOverrides: new Map(),
   contrastThresholds: {
     interactive: 3.0,
@@ -54,7 +61,7 @@ function isIconNode(node: SceneNode, config = defaultConfig): boolean {
     return iconCache.get(node)!;
   }
 
-  console.log(`Checking if node "${node.name}" is an icon:`);
+  console.log(`\nAnalyzing node "${node.name}" for icon detection:`);
   console.log(`- Type: ${node.type}`);
   console.log(`- Size: ${node.width}x${node.height}`);
   console.log(`- Parent: ${node.parent?.type || 'none'}`);
@@ -64,6 +71,7 @@ function isIconNode(node: SceneNode, config = defaultConfig): boolean {
   const sizeMatch = isIconBySize(node, config);
   const contextMatch = isIconByContext(node);
 
+  console.log(`Detection results for "${node.name}":`);
   console.log(`- Name match: ${nameMatch}`);
   console.log(`- Type match: ${typeMatch}`);
   console.log(`- Size match: ${sizeMatch}`);
@@ -71,7 +79,7 @@ function isIconNode(node: SceneNode, config = defaultConfig): boolean {
 
   const result = nameMatch || typeMatch || sizeMatch || contextMatch;
   iconCache.set(node, result);
-  console.log(`Final result: node "${node.name}" ${result ? 'is' : 'is not'} an icon`);
+  console.log(`Final result: "${node.name}" ${result ? 'IS' : 'is NOT'} an icon\n`);
   return result;
 }
 
@@ -243,25 +251,39 @@ function getRelativeLuminance(color: Color): number {
 // Main analysis function
 export function analyzeIconContrast(node: SceneNode, config = defaultConfig): IconAnalysisResult | null {
   try {
+    console.log(`\nAnalyzing icon contrast for "${node.name}":`);
+    
     if (!isIconNode(node, config)) {
+      console.log(`Skipping "${node.name}" - not detected as an icon`);
       return null;
     }
 
     const role = determineIconRole(node, config);
+    console.log(`- Determined role: ${role}`);
+    
     const backgroundColor = findEffectiveBackground(node);
+    console.log(`- Background color: rgb(${Math.round(backgroundColor.r * 255)}, ${Math.round(backgroundColor.g * 255)}, ${Math.round(backgroundColor.b * 255)})`);
+    
     const iconColors = extractIconColors(node);
+    console.log(`- Found ${iconColors.length} colors in icon`);
     
     if (iconColors.length === 0) {
       console.warn(`No colors found for icon "${node.name}"`);
       return null;
     }
 
-    const contrastRatios = iconColors.map(color => 
-      calculateContrastRatio(color, backgroundColor)
-    );
+    const contrastRatios = iconColors.map(color => {
+      const ratio = calculateContrastRatio(color, backgroundColor);
+      console.log(`- Color rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}) has contrast ratio: ${ratio.toFixed(2)}:1`);
+      return ratio;
+    });
 
     const lowestContrast = Math.min(...contrastRatios);
     const requiredContrast = config.contrastThresholds[role];
+    
+    console.log(`- Lowest contrast: ${lowestContrast.toFixed(2)}:1`);
+    console.log(`- Required contrast: ${requiredContrast}:1`);
+    console.log(`- Compliance: ${lowestContrast >= requiredContrast ? 'PASS' : 'FAIL'}\n`);
     
     return {
       nodeId: node.id,
