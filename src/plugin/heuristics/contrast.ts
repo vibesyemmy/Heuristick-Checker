@@ -394,6 +394,20 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
   const issues: ContrastIssue[] = [];
 
   function traverse(node: SceneNode) {
+    // Skip hidden nodes and their children
+    if ('visible' in node && !node.visible) {
+      return;
+    }
+
+    // Check if any parent is hidden
+    let current: BaseNode | null = node.parent;
+    while (current) {
+      if ('visible' in current && !current.visible) {
+        return;
+      }
+      current = current.parent;
+    }
+
     if (node.type === 'TEXT') {
       const textFill = getTextNodeFillColor(node);
       const backgroundFill = findOpaqueBackground(node);

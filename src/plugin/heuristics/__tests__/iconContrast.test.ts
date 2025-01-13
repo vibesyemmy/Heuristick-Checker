@@ -170,42 +170,66 @@ const defaultConfig = {
   namePatterns: ['icon', 'ico', 'info', 'i', 'delete', 'add', 'close', 'menu'],
   roleOverrides: new Map(),
   contrastThresholds: {
-    interactive: 3,
-    informative: 2.5,
-    decorative: 1.5
-  }
+    interactive: 4.5,
+    informative: 3.0,
+    decorative: 2.0
+  },
+  maxAspectRatioDifference: 0.2
 };
 
 describe('Icon Detection', () => {
-  test('should detect icon by name', () => {
-    const iconNode = createMockNode({ name: 'icon' });
-    const nonIconNode = createMockNode({ name: 'rectangle' });
-
-    expect(__testing.isIconNode(iconNode as any, defaultConfig)).toBe(true);
-    expect(__testing.isIconNode(nonIconNode as any, defaultConfig)).toBe(false);
+  test('detects icon by name', () => {
+    const node = createMockNode({
+      name: 'search-icon',
+      width: 24,
+      height: 24
+    });
+    expect(isIconNode(node, defaultConfig)).toBe(true);
   });
 
-  test('should detect icon by size', () => {
-    const smallNode = createMockNode({ width: 24, height: 24 });
-    const largeNode = createMockNode({ width: 100, height: 100 });
-
-    expect(__testing.isIconNode(smallNode as any, defaultConfig)).toBe(true);
-    expect(__testing.isIconNode(largeNode as any, defaultConfig)).toBe(false);
+  test('detects icon by size', () => {
+    const node = createMockNode({
+      name: 'small-element',
+      width: 24,
+      height: 24
+    });
+    expect(isIconNode(node, defaultConfig)).toBe(true);
   });
 
-  test('should detect icon by type', () => {
-    const vectorNode = createMockNode({ type: 'VECTOR' });
-    const frameNode = createMockNode({ type: 'FRAME' });
-
-    expect(__testing.isIconNode(vectorNode as any, defaultConfig)).toBe(true);
-    expect(__testing.isIconNode(frameNode as any, defaultConfig)).toBe(false);
+  test('detects icon by shape', () => {
+    const node = createMockNode({
+      name: 'square-element',
+      width: 32,
+      height: 32
+    });
+    expect(isIconNode(node, defaultConfig)).toBe(true);
   });
 
-  test('should detect icon by context', () => {
-    const parentNode = createMockNode({ type: 'INSTANCE' });
-    const buttonIcon = createMockNode({ parent: parentNode as any });
+  test('rejects non-square elements', () => {
+    const node = createMockNode({
+      name: 'rectangle',
+      width: 100,
+      height: 32
+    });
+    expect(isIconNode(node, defaultConfig)).toBe(false);
+  });
 
-    expect(__testing.isIconNode(buttonIcon as any, defaultConfig)).toBe(true);
+  test('rejects elements with extreme aspect ratios', () => {
+    const node = createMockNode({
+      name: 'icon',
+      width: 48,
+      height: 24  // 2:1 ratio, should be rejected
+    });
+    expect(isIconNode(node, defaultConfig)).toBe(false);
+  });
+
+  test('accepts elements with slight aspect ratio differences', () => {
+    const node = createMockNode({
+      name: 'almost-square-icon',
+      width: 44,
+      height: 40  // 1.1:1 ratio, should be accepted
+    });
+    expect(isIconNode(node, defaultConfig)).toBe(true);
   });
 });
 
@@ -264,21 +288,45 @@ describe('Contrast Calculation', () => {
   test('should calculate correct contrast ratio', () => {
     // White on black
     expect(calculateContrastRatio(
-      { r: 1, g: 1, b: 1 },
-      { r: 0, g: 0, b: 0 }
+      {
+        color: { r: 1, g: 1, b: 1 },
+        fillOpacity: 1,
+        layerOpacity: 1
+      },
+      {
+        color: { r: 0, g: 0, b: 0 },
+        fillOpacity: 1,
+        layerOpacity: 1
+      }
     )).toBeCloseTo(21);
 
     // Gray on white (50% gray, #808080)
     expect(calculateContrastRatio(
-      { r: 0.5, g: 0.5, b: 0.5 },
-      { r: 1, g: 1, b: 1 }
+      {
+        color: { r: 0.5, g: 0.5, b: 0.5 },
+        fillOpacity: 1,
+        layerOpacity: 1
+      },
+      {
+        color: { r: 1, g: 1, b: 1 },
+        fillOpacity: 1,
+        layerOpacity: 1
+      }
     )).toBeCloseTo(3.98);
   });
 
   test('should handle transparent colors', () => {
     expect(calculateContrastRatio(
-      { r: 1, g: 1, b: 1, a: 0.5 },
-      { r: 0, g: 0, b: 0 }
+      {
+        color: { r: 1, g: 1, b: 1 },
+        fillOpacity: 0.5,
+        layerOpacity: 1
+      },
+      {
+        color: { r: 0, g: 0, b: 0 },
+        fillOpacity: 1,
+        layerOpacity: 1
+      }
     )).toBeGreaterThan(0);
   });
 });

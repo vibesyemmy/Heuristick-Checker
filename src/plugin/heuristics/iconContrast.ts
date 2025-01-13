@@ -1,3 +1,5 @@
+import Color from 'color';
+
 // Types and interfaces
 type IconRole = 'interactive' | 'informative' | 'decorative';
 
@@ -6,13 +8,20 @@ interface IconDetectionConfig {
   namePatterns: string[];
   roleOverrides: Map<string, IconRole>;
   contrastThresholds: Record<IconRole, number>;
+  maxAspectRatioDifference: number;  // Maximum allowed difference between width and height ratio
 }
 
-interface Color {
+interface FigmaColor {
   r: number;
   g: number;
   b: number;
   a?: number;
+}
+
+interface ColorWithOpacity {
+  color: FigmaColor;
+  fillOpacity: number;
+  layerOpacity: number;
 }
 
 interface IconAnalysisResult {
@@ -20,40 +29,44 @@ interface IconAnalysisResult {
   nodeName: string;
   role: IconRole;
   colors: {
-    original: Color;
-    blended: Color;
+    original: FigmaColor;
+    blended: FigmaColor;
     contrastRatio: number;
   }[];
-  backgroundColor: Color;
+  backgroundColor: FigmaColor;
   contrastRatio: number;
   requiredRatio: number;
   isCompliant: boolean;
-  failingColors?: Color[];
+  failingColors?: FigmaColor[];
 }
 
 // Configuration
 const defaultConfig: IconDetectionConfig = {
   maxSize: 48,
   namePatterns: [
-    'icon', 'ico', 'info', 'i', 
-    'delete', 'add', 'close', 'menu',
-    'arrow', 'chevron', 'button', 'btn',
-    'symbol', 'logo', 'image', 'img',
-    'search', 'notification', 'bell',
-    'check', 'cross', 'star', 'heart'
+    'icon',
+    'ico',
+    'glyph',
+    'symbol',
+    'logo',
+    'avatar',
+    'bullet',
+    'marker',
+    'indicator'
   ],
   roleOverrides: new Map(),
   contrastThresholds: {
-    interactive: 3.0,
-    informative: 3.0,
-    decorative: 2.0
-  }
+    interactive: 4.5,  // WCAG AA for interactive elements
+    informative: 3.0,  // WCAG AA for non-text content
+    decorative: 2.0   // Lower threshold for decorative elements
+  },
+  maxAspectRatioDifference: 0.2  // This means width/height should be between 0.8 and 1.2
 };
 
 // Cache for performance
 const iconCache = new WeakMap<SceneNode, boolean>();
 const roleCache = new WeakMap<SceneNode, IconRole>();
-const backgroundCache = new WeakMap<SceneNode, Color>();
+const backgroundCache = new WeakMap<SceneNode, ColorWithOpacity>();
 
 // Icon detection
 function isIconNode(node: SceneNode, config = defaultConfig): boolean {
@@ -61,67 +74,75 @@ function isIconNode(node: SceneNode, config = defaultConfig): boolean {
     return iconCache.get(node)!;
   }
 
-  console.log(`\nAnalyzing node "${node.name}" for icon detection:`);
-  console.log(`- Type: ${node.type}`);
-  console.log(`- Size: ${node.width}x${node.height}`);
-  console.log(`- Parent: ${node.parent?.type || 'none'}`);
+  // Skip hidden nodes
+  if ('visible' in node && !node.visible) {
+    iconCache.set(node, false);
+    return false;
+  }
 
   const nameMatch = isIconByName(node, config);
   const typeMatch = isIconByType(node);
   const sizeMatch = isIconBySize(node, config);
+  const shapeMatch = isIconByShape(node, config);
   const contextMatch = isIconByContext(node);
 
-  console.log(`Detection results for "${node.name}":`);
-  console.log(`- Name match: ${nameMatch}`);
-  console.log(`- Type match: ${typeMatch}`);
-  console.log(`- Size match: ${sizeMatch}`);
-  console.log(`- Context match: ${contextMatch}`);
-
-  const result = nameMatch || typeMatch || sizeMatch || contextMatch;
+  // Require at least two criteria to match, or name match plus one other
+  const result = (nameMatch && (typeMatch || sizeMatch || shapeMatch || contextMatch)) ||
+                (typeMatch && sizeMatch && shapeMatch);
+  
   iconCache.set(node, result);
-  console.log(`Final result: "${node.name}" ${result ? 'IS' : 'is NOT'} an icon\n`);
   return result;
 }
 
 function isIconByName(node: SceneNode, config: IconDetectionConfig): boolean {
   const name = node.name.toLowerCase();
-  const matches = config.namePatterns.filter(pattern => name.includes(pattern));
-  if (matches.length > 0) {
-    console.log(`Name "${name}" matches patterns: ${matches.join(', ')}`);
-  }
-  return matches.length > 0;
+  return config.namePatterns.some(pattern => name.includes(pattern));
 }
 
 function isIconByType(node: SceneNode): boolean {
-  const validTypes = ['VECTOR', 'FRAME', 'COMPONENT', 'INSTANCE', 'ELLIPSE', 'STAR', 'RECTANGLE'];
-  const isValid = validTypes.includes(node.type);
-  if (isValid) {
-    console.log(`Type "${node.type}" is a valid icon type`);
-  }
-  return isValid;
+  return ['VECTOR', 'FRAME', 'COMPONENT', 'INSTANCE', 'ELLIPSE', 'STAR', 'RECTANGLE'].includes(node.type);
 }
 
 function isIconBySize(node: SceneNode, config: IconDetectionConfig): boolean {
-  const isValidSize = node.width <= config.maxSize && node.height <= config.maxSize;
-  if (isValidSize) {
-    console.log(`Size ${node.width}x${node.height} is within max size ${config.maxSize}`);
+  return node.width <= config.maxSize && node.height <= config.maxSize;
+}
+
+function isIconByShape(node: SceneNode, config: IconDetectionConfig): boolean {
+  if (!('width' in node) || !('height' in node)) {
+    return false;
   }
-  return isValidSize;
+
+  // Skip nodes that are too small
+  if (node.width < 12 || node.height < 12) {
+    return false;
+  }
+
+  // Calculate aspect ratio
+  const aspectRatio = node.width / node.height;
+  
+  // Check if the aspect ratio is close to 1:1
+  return Math.abs(1 - aspectRatio) <= config.maxAspectRatioDifference;
 }
 
 function isIconByContext(node: SceneNode): boolean {
-  // Check if the node is inside an interactive component
-  let parent = node.parent;
-  while (parent) {
-    if (parent.type === 'INSTANCE' || 
-        parent.name.toLowerCase().includes('button') ||
-        parent.name.toLowerCase().includes('link')) {
-      console.log(`Found interactive parent: ${parent.type} "${parent.name}"`);
-      return true;
+  // Skip hidden nodes or nodes with hidden parents
+  let current: BaseNode | null = node;
+  while (current) {
+    if ('visible' in current && !current.visible) {
+      return false;
     }
-    parent = parent.parent;
+    current = current.parent;
   }
-  return false;
+
+  const parent = node.parent;
+  if (!parent) return false;
+
+  // Check if it's inside a button or clickable component
+  const parentName = parent.name.toLowerCase();
+  return parentName.includes('button') || 
+         parentName.includes('icon') || 
+         ('onClick' in parent) ||
+         ('reactions' in parent && (parent as any).reactions?.length > 0);
 }
 
 // Role determination
@@ -131,107 +152,161 @@ function determineIconRole(node: SceneNode, config = defaultConfig): IconRole {
   }
 
   let role: IconRole;
-
-  // Check for manual override
+  
   if (config.roleOverrides.has(node.name)) {
     role = config.roleOverrides.get(node.name)!;
+  } else if (isInteractive(node)) {
+    role = 'interactive';
+  } else if (isDecorative(node)) {
+    role = 'decorative';
   } else {
-    // Automatic detection
-    if (isInteractive(node)) {
-      role = 'interactive';
-    } else if (isDecorative(node)) {
-      role = 'decorative';
-    } else {
-      role = 'informative';
-    }
+    role = 'informative';
   }
 
   roleCache.set(node, role);
-  console.log(`Icon "${node.name}" determined to be ${role}`);
   return role;
 }
 
 function isInteractive(node: SceneNode): boolean {
-  const parent = node.parent;
-  if (!parent) return false;
-
-  const parentName = parent.name.toLowerCase();
+  if (!node.parent) return false;
+  
+  const parentName = node.parent.name.toLowerCase();
   return parentName.includes('button') || 
+         parentName.includes('btn') || 
          parentName.includes('link') ||
-         parentName.includes('menu') ||
-         parentName.includes('nav');
+         parentName.includes('clickable');
 }
 
 function isDecorative(node: SceneNode): boolean {
   const name = node.name.toLowerCase();
   return name.includes('decorative') || 
-         name.includes('background') ||
-         name.startsWith('bg-');
+         name.includes('background');
 }
 
 // Background detection
-function findEffectiveBackground(node: SceneNode): Color {
-  if (backgroundCache.has(node)) {
-    return backgroundCache.get(node)!;
-  }
-
-  try {
-    let background: Color = { r: 1, g: 1, b: 1 };
-
-    if ('fills' in node && Array.isArray(node.fills)) {
-      const solidFills = node.fills.filter((fill: Paint) => 
-        fill.type === 'SOLID' && fill.visible !== false
-      );
-      if (solidFills.length > 0) {
-        return solidFills[0].type === 'SOLID' ? 
-          { r: solidFills[0].color.r, g: solidFills[0].color.g, b: solidFills[0].color.b, a: solidFills[0].opacity } :
-          background;
+function getCanvasBackground(): ColorWithOpacity {
+  // Get the page node first, as it has the backgrounds property
+  const page = figma.currentPage;
+  const backgrounds = page.backgrounds;
+  
+  // Check if backgrounds exist and are not mixed
+  if (backgrounds) {
+    const visibleBackgrounds = backgrounds.filter((bg: Paint) => bg.visible !== false);
+    if (visibleBackgrounds.length > 0) {
+      const bg = visibleBackgrounds[0];
+      if (bg.type === 'SOLID') {
+        return {
+          color: bg.color,
+          fillOpacity: bg.opacity ?? 1,
+          layerOpacity: 1
+        };
       }
     }
-
-    let parent = node.parent;
-    while (parent) {
-      if ('fills' in parent && Array.isArray(parent.fills)) {
-        const solidFills = parent.fills.filter((fill: Paint) => 
-          fill.type === 'SOLID' && fill.visible !== false
-        );
-
-        if (solidFills.length > 0) {
-          const fill = solidFills[solidFills.length - 1] as SolidPaint;
-          background = blendColors(
-            { r: fill.color.r, g: fill.color.g, b: fill.color.b, a: fill.opacity || 1 },
-            background
-          );
-          
-          if (fill.opacity === 1) break; // Found opaque background
-        }
-      }
-      parent = parent.parent;
-    }
-
-    backgroundCache.set(node, background);
-    console.log(`Background color for "${node.name}":`, background);
-    return background;
-  } catch (error) {
-    console.error(`Error finding background for "${node.name}":`, error);
-    return { r: 1, g: 1, b: 1 }; // Fallback to white
   }
-}
-
-// Color utilities
-function blendColors(top: Color, bottom: Color): Color {
-  const a = top.a ?? 1;
+  
+  // If no canvas background is set or it's not a solid color,
+  // return white as the absolute fallback
   return {
-    r: (top.r * a) + (bottom.r * (1 - a)),
-    g: (top.g * a) + (bottom.g * (1 - a)),
-    b: (top.b * a) + (bottom.b * (1 - a))
+    color: { r: 1, g: 1, b: 1 },
+    fillOpacity: 1,
+    layerOpacity: 1
   };
 }
 
+function findEffectiveBackground(node: SceneNode): ColorWithOpacity {
+  let current: BaseNode | null = node;
+  const backgroundLayers: ColorWithOpacity[] = [];
+
+  while (current && current.type !== 'PAGE') {
+    if ('fills' in current) {
+      const fills = current.fills as Paint[];
+      if (Array.isArray(fills)) {
+        for (const fill of fills) {
+          if (fill.type === 'SOLID' && fill.visible !== false) {
+            backgroundLayers.unshift({
+              color: fill.color,
+              fillOpacity: fill.opacity ?? 1,
+              layerOpacity: ('opacity' in current) ? (current.opacity ?? 1) : 1
+            });
+          }
+        }
+      }
+    }
+    
+    if ('backgrounds' in current) {
+      const backgrounds = current.backgrounds as Paint[];
+      if (Array.isArray(backgrounds)) {
+        for (const bg of backgrounds) {
+          if (bg.type === 'SOLID' && bg.visible !== false) {
+            backgroundLayers.unshift({
+              color: bg.color,
+              fillOpacity: bg.opacity ?? 1,
+              layerOpacity: 1
+            });
+          }
+        }
+      }
+    }
+    
+    current = current.parent;
+  }
+
+  // If no opaque background was found, use the canvas background
+  if (backgroundLayers.length === 0) {
+    return getCanvasBackground();
+  }
+
+  // Blend all background layers
+  return backgroundLayers.reduce((acc, layer) => blendColorWithOpacity(layer, acc));
+}
+
+// Color utilities
+function blendColorWithOpacity(top: ColorWithOpacity, bottom: ColorWithOpacity): ColorWithOpacity {
+  const topAlpha = top.fillOpacity * top.layerOpacity;
+  const bottomAlpha = bottom.fillOpacity * bottom.layerOpacity;
+  const compositeAlpha = topAlpha + bottomAlpha * (1 - topAlpha);
+
+  if (compositeAlpha === 0) {
+    return {
+      color: { r: 1, g: 1, b: 1 },
+      fillOpacity: 1,
+      layerOpacity: 1
+    };
+  }
+
+  return {
+    color: {
+      r: (top.color.r * topAlpha + bottom.color.r * bottomAlpha * (1 - topAlpha)) / compositeAlpha,
+      g: (top.color.g * topAlpha + bottom.color.g * bottomAlpha * (1 - topAlpha)) / compositeAlpha,
+      b: (top.color.b * topAlpha + bottom.color.b * bottomAlpha * (1 - topAlpha)) / compositeAlpha
+    },
+    fillOpacity: compositeAlpha,
+    layerOpacity: 1
+  };
+}
+
+function colorWithOpacityToHex(color: ColorWithOpacity): string {
+  const { r, g, b } = color.color;
+  const effectiveOpacity = color.fillOpacity * color.layerOpacity;
+  
+  return Color.rgb(
+    Math.round(r * 255),
+    Math.round(g * 255),
+    Math.round(b * 255),
+    effectiveOpacity
+  ).hex();
+}
+
 // Contrast calculation
-function calculateContrastRatio(foreground: Color, background: Color): number {
-  const fgLuminance = getRelativeLuminance(foreground);
-  const bgLuminance = getRelativeLuminance(background);
+function calculateContrastRatio(foreground: ColorWithOpacity, background: ColorWithOpacity): number {
+  const fgHex = colorWithOpacityToHex(foreground);
+  const bgHex = colorWithOpacityToHex(background);
+  
+  const fgColor = Color(fgHex);
+  const bgColor = Color(bgHex);
+  
+  const fgLuminance = fgColor.luminosity();
+  const bgLuminance = bgColor.luminosity();
   
   const lighter = Math.max(fgLuminance, bgLuminance);
   const darker = Math.min(fgLuminance, bgLuminance);
@@ -239,119 +314,239 @@ function calculateContrastRatio(foreground: Color, background: Color): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
-function getRelativeLuminance(color: Color): number {
-  const toLinear = (c: number) => 
-    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-
-  return 0.2126 * toLinear(color.r) +
-         0.7152 * toLinear(color.g) +
-         0.0722 * toLinear(color.b);
-}
-
 // Main analysis function
-export function analyzeIconContrast(node: SceneNode, config = defaultConfig): IconAnalysisResult | null {
-  try {
-    console.log(`\nAnalyzing icon contrast for "${node.name}":`);
-    
-    if (!isIconNode(node, config)) {
-      console.log(`Skipping "${node.name}" - not detected as an icon`);
-      return null;
-    }
-
-    const role = determineIconRole(node, config);
-    console.log(`- Determined role: ${role}`);
-    
-    const backgroundColor = findEffectiveBackground(node);
-    console.log(`- Background color: rgb(${Math.round(backgroundColor.r * 255)}, ${Math.round(backgroundColor.g * 255)}, ${Math.round(backgroundColor.b * 255)})`);
-    
-    const iconColors = extractIconColors(node);
-    console.log(`- Found ${iconColors.length} colors in icon`);
-    
-    if (iconColors.length === 0) {
-      console.warn(`No colors found for icon "${node.name}"`);
-      return null;
-    }
-
-    const contrastRatios = iconColors.map(color => {
-      const ratio = calculateContrastRatio(color, backgroundColor);
-      console.log(`- Color rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}) has contrast ratio: ${ratio.toFixed(2)}:1`);
-      return ratio;
-    });
-
-    const lowestContrast = Math.min(...contrastRatios);
-    const requiredContrast = config.contrastThresholds[role];
-    
-    console.log(`- Lowest contrast: ${lowestContrast.toFixed(2)}:1`);
-    console.log(`- Required contrast: ${requiredContrast}:1`);
-    console.log(`- Compliance: ${lowestContrast >= requiredContrast ? 'PASS' : 'FAIL'}\n`);
-    
-    return {
-      nodeId: node.id,
-      nodeName: node.name,
-      role,
-      colors: iconColors.map(color => ({
-        original: color,
-        blended: blendColors(color, backgroundColor),
-        contrastRatio: calculateContrastRatio(color, backgroundColor)
-      })),
-      backgroundColor,
-      contrastRatio: lowestContrast,
-      requiredRatio: requiredContrast,
-      isCompliant: lowestContrast >= requiredContrast,
-      failingColors: lowestContrast < requiredContrast ? iconColors : undefined
-    };
-
-  } catch (error) {
-    console.error(`Error analyzing icon "${node.name}":`, error);
+function analyzeIconContrast(node: SceneNode, config = defaultConfig): IconAnalysisResult | null {
+  // Skip if not an icon or if hidden
+  if (!isIconNode(node, config) || ('visible' in node && !node.visible)) {
     return null;
   }
+
+  console.log(`\nAnalyzing icon contrast for "${node.name}":`);
+  
+  const role = determineIconRole(node, config);
+  console.log(`- Determined role: ${role}`);
+  
+  const background = findEffectiveBackground(node);
+  console.log(`- Background color: rgb(${Math.round(background.color.r * 255)}, ${Math.round(background.color.g * 255)}, ${Math.round(background.color.b * 255)})`);
+  
+  const iconColors = extractIconColorsWithOpacity(node);
+  console.log(`- Found ${iconColors.length} colors in icon`);
+  
+  const contrastResults = iconColors.map(color => {
+    const ratio = calculateContrastRatio(color, background);
+    console.log(`- Color rgb(${Math.round(color.color.r * 255)}, ${Math.round(color.color.g * 255)}, ${Math.round(color.color.b * 255)}) has contrast ratio: ${ratio.toFixed(2)}:1`);
+    return {
+      original: color.color,
+      blended: blendColorWithOpacity(color, background).color,
+      contrastRatio: ratio
+    };
+  });
+  
+  const lowestContrast = Math.min(...contrastResults.map(r => r.contrastRatio));
+  const requiredRatio = config.contrastThresholds[role];
+  const isCompliant = lowestContrast >= requiredRatio;
+  
+  console.log(`- Lowest contrast: ${lowestContrast.toFixed(2)}:1`);
+  console.log(`- Required contrast: ${requiredRatio}:1`);
+  console.log(`- Compliance: ${isCompliant ? 'PASS' : 'FAIL'}\n`);
+  
+  return {
+    nodeId: node.id,
+    nodeName: node.name,
+    role,
+    colors: contrastResults,
+    backgroundColor: background.color,
+    contrastRatio: lowestContrast,
+    requiredRatio,
+    isCompliant,
+    failingColors: isCompliant ? undefined : contrastResults
+      .filter(r => r.contrastRatio < requiredRatio)
+      .map(r => r.original)
+  };
 }
 
-function extractIconColors(node: SceneNode): Color[] {
-  const colors: Color[] = [];
+function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
+  const colors: ColorWithOpacity[] = [];
+  const nodeOpacity = 'opacity' in node ? (node.opacity || 1) : 1;
 
-  if ('fills' in node && Array.isArray(node.fills)) {
-    node.fills.forEach((fill: Paint) => {
-      if (fill.type === 'SOLID' && fill.visible !== false) {
+  // Helper function to add a color with proper opacity
+  function addColor(paint: Paint, nodeOpacity: number) {
+    if (paint.type === 'SOLID' && paint.visible) {
+      colors.push({
+        color: {
+          r: paint.color.r,
+          g: paint.color.g,
+          b: paint.color.b,
+          a: paint.opacity
+        },
+        fillOpacity: paint.opacity || 1,
+        layerOpacity: nodeOpacity
+      });
+    } else if (paint.type === 'GRADIENT_LINEAR' || paint.type === 'GRADIENT_RADIAL' || paint.type === 'GRADIENT_ANGULAR') {
+      // For gradients, add each stop color
+      paint.gradientStops.forEach(stop => {
         colors.push({
-          r: fill.color.r,
-          g: fill.color.g,
-          b: fill.color.b,
-          a: fill.opacity
+          color: {
+            r: stop.color.r,
+            g: stop.color.g,
+            b: stop.color.b,
+            a: stop.color.a
+          },
+          fillOpacity: stop.color.a || 1,
+          layerOpacity: nodeOpacity
         });
-      }
-    });
+      });
+    }
   }
 
-  if ('strokes' in node && Array.isArray(node.strokes)) {
-    node.strokes.forEach((stroke: Paint) => {
-      if (stroke.type === 'SOLID' && stroke.visible !== false) {
-        colors.push({
-          r: stroke.color.r,
-          g: stroke.color.g,
-          b: stroke.color.b,
-          a: stroke.opacity
-        });
-      }
-    });
+  // Check for fills
+  if ('fills' in node) {
+    const fills = node.fills as Paint[];
+    if (Array.isArray(fills)) {
+      fills.forEach(fill => addColor(fill, nodeOpacity));
+    }
+  }
+
+  // Check for strokes
+  if ('strokes' in node) {
+    const strokes = node.strokes as Paint[];
+    if (Array.isArray(strokes)) {
+      strokes.forEach(stroke => addColor(stroke, nodeOpacity));
+    }
+  }
+
+  // Check for backgrounds (auto-layout frames)
+  if ('backgrounds' in node) {
+    const backgrounds = (node as FrameNode).backgrounds;
+    if (Array.isArray(backgrounds)) {
+      backgrounds.forEach(bg => addColor(bg, nodeOpacity));
+    }
+  }
+
+  // Check for effects that might affect color
+  if ('effects' in node) {
+    const effects = node.effects;
+    if (Array.isArray(effects)) {
+      effects.forEach(effect => {
+        if (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW') {
+          colors.push({
+            color: {
+              r: effect.color.r,
+              g: effect.color.g,
+              b: effect.color.b,
+              a: effect.color.a || 1
+            },
+            fillOpacity: effect.color.a || 1,
+            layerOpacity: nodeOpacity * (effect.spread || 1)
+          });
+        }
+      });
+    }
+  }
+
+  // For vector nodes, check path fills
+  if (node.type === 'VECTOR') {
+    const vectorNode = node as VectorNode;
+    if (vectorNode.vectorNetwork && vectorNode.vectorNetwork.regions) {
+      vectorNode.vectorNetwork.regions.forEach(region => {
+        if (region.fills) {
+          region.fills.forEach(fill => addColor(fill, nodeOpacity));
+        }
+      });
+    }
+  }
+
+  // For component instances, check for style overrides
+  if (node.type === 'INSTANCE') {
+    const instance = node as InstanceNode;
+    // Get fills and strokes directly from the instance
+    if (instance.fills) {
+      (instance.fills as Paint[]).forEach(fill => addColor(fill, nodeOpacity));
+    }
+    if (instance.strokes) {
+      (instance.strokes as Paint[]).forEach(stroke => addColor(stroke, nodeOpacity));
+    }
   }
 
   // Recursively check children
   if ('children' in node) {
-    node.children.forEach(child => {
-      colors.push(...extractIconColors(child));
-    });
+    for (const child of node.children) {
+      colors.push(...extractIconColorsWithOpacity(child));
+    }
   }
 
-  return colors;
+  // Remove duplicates and invalid colors
+  return colors.filter((color, index, self) => 
+    // Remove invalid colors
+    color.color.r >= 0 && color.color.r <= 1 &&
+    color.color.g >= 0 && color.color.g <= 1 &&
+    color.color.b >= 0 && color.color.b <= 1 &&
+    // Remove duplicates
+    index === self.findIndex(c => 
+      c.color.r === color.color.r &&
+      c.color.g === color.color.g &&
+      c.color.b === color.color.b &&
+      c.fillOpacity === color.fillOpacity &&
+      c.layerOpacity === color.layerOpacity
+    )
+  );
+}
+
+function generateIconRecommendations(
+  contrastRatio: number,
+  requiredRatio: number,
+  role: IconRole,
+  colors: { original: FigmaColor; blended: FigmaColor; contrastRatio: number }[],
+  backgroundColor: FigmaColor
+): string[] {
+  const recommendations: string[] = [];
+  
+  if (contrastRatio < requiredRatio) {
+    // First recommendation: Always show the contrast improvement needed
+    recommendations.push(
+      `Increase contrast ratio from ${contrastRatio.toFixed(2)}:1 to at least ${requiredRatio}:1`
+    );
+
+    // Second recommendation: Color-specific fix based on background
+    const bgLuminance = Color.rgb(
+      Math.round(backgroundColor.r * 255),
+      Math.round(backgroundColor.g * 255),
+      Math.round(backgroundColor.b * 255)
+    ).luminosity();
+
+    recommendations.push(
+      bgLuminance > 0.5
+        ? 'Use darker, more saturated colors against the light background'
+        : 'Use lighter, more saturated colors against the dark background'
+    );
+
+    // Third recommendation: Role-specific advice
+    switch (role) {
+      case 'interactive':
+        recommendations.push('Add a visible boundary or background shape to improve visibility');
+        break;
+      case 'informative':
+        recommendations.push('Consider adding a text label for clarity');
+        break;
+      case 'decorative':
+        recommendations.push('Simplify the design or reclassify if it conveys meaning');
+        break;
+    }
+  }
+  
+  return recommendations;
 }
 
 // Export both the main function and testing utilities
-export { analyzeIconContrast as evaluateIconContrast };
+export { 
+  analyzeIconContrast as evaluateIconContrast,
+  generateIconRecommendations 
+};
 export const __testing = {
   isIconNode,
   determineIconRole,
   findEffectiveBackground,
   calculateContrastRatio,
-  extractIconColors
+  extractIconColorsWithOpacity,
+  generateIconRecommendations
 };
