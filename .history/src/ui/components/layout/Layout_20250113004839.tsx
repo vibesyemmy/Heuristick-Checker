@@ -11,7 +11,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      padding: '16px 8px 8px 8px',
+      padding: '24px 8px 16px 8px',
       gap: theme.spacing.md,
       background: theme.colors.background,
       color: theme.colors.text,

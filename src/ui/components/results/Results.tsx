@@ -62,11 +62,16 @@ export const Results: React.FC<ResultsProps> = ({
         <p style={{
           margin: 0,
           fontSize: '14px',
-          color: '#FFFFFF'
+          color: '#FFFFFF',
+          fontFamily: theme.typography.fontFamily,
+          fontWeight: theme.typography.weights.regular,
+          lineHeight: '20px'
         }}>
           {results.length > 0 
             ? <>We found <span style={{ fontWeight: theme.typography.weights.semibold }}>{results.length}</span> {results.length === 1 ? 'issue' : 'issues'} to address</>
-            : 'Analysis results will show here'}
+            : hasScanned 
+              ? <>We found <span style={{ fontWeight: theme.typography.weights.semibold }}>0</span> issues to address</> 
+              : 'Analysis results will show here'}
         </p>
 
         <div style={{
