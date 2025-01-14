@@ -7,6 +7,7 @@ export type Severity = 'low' | 'medium' | 'high';
 
 export interface HeuristicResult {
   id: string;
+  nodeId: string;  // Figma node ID
   category: string;
   title: string;
   description: string;
@@ -21,6 +22,8 @@ interface ResultsProps {
   selectedElement: boolean;
   hasScanned: boolean;
   error?: string;
+  selectedResultId?: string;
+  onSelectResult: (resultId: string) => void;
 }
 
 export const Results: React.FC<ResultsProps> = ({
@@ -29,7 +32,9 @@ export const Results: React.FC<ResultsProps> = ({
   message,
   selectedElement,
   hasScanned,
-  error
+  error,
+  selectedResultId,
+  onSelectResult
 }) => {
   const getSeverityColor = (severity: Severity) => {
     switch (severity) {
@@ -180,104 +185,129 @@ export const Results: React.FC<ResultsProps> = ({
               display: 'flex',
               flexDirection: 'column',
               gap: theme.spacing.xs,
-              width: '100%'
+              width: '100%',
+              padding: 0
             }}>
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
                 gap: theme.spacing.xs
               }}>
-                {results.map(result => (
-                  <div
-                    key={result.id}
-                    style={{
-                      padding: theme.spacing.md,
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      borderRadius: 0,
-                      borderLeft: `6px solid ${getSeverityColor(result.severity)}`,
-                      width: '100%'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      marginBottom: theme.spacing.xs
-                    }}>
-                      <div>
-                        <h4 style={{
-                          margin: 0,
-                          fontSize: '16px',
-                          color: 'rgba(255, 255, 255, 0.95)',
-                          fontWeight: theme.typography.weights.medium
-                        }}>{result.title}</h4>
-                        <p style={{
-                          margin: `${theme.spacing.xs} 0 0 0`,
-                          fontSize: '12px',
-                          color: 'rgba(255, 255, 255, 0.65)'
-                        }}>{result.category}</p>
-                      </div>
-                      <span style={{
-                        fontSize: theme.typography.sizes.small,
-                        padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
-                        background: `${getSeverityColor(result.severity)}20`,
-                        color: getSeverityColor(result.severity),
-                        borderRadius: theme.borderRadius.small,
-                        fontWeight: theme.typography.weights.medium
-                      }}>
-                        {getSeverityLabel(result.severity)}
-                      </span>
-                    </div>
-
-                    <p style={{
-                      margin: `${theme.spacing.sm} 0`,
-                      fontSize: theme.typography.sizes.small,
-                      color: theme.colors.text,
-                      lineHeight: '16px'
-                    }}>{result.description}</p>
-
-                    {result.recommendations && result.recommendations.length > 0 && (
-                      <div style={{
-                        marginTop: theme.spacing.sm,
-                        padding: theme.spacing.sm,
-                        border: '1px solid #595753',
-                        borderRadius: theme.spacing.sm
-                      }}>
-                        <h5 style={{
-                          margin: 0,
-                          fontSize: '14px',
-                          fontWeight: theme.typography.weights.semibold,
-                          color: '#FFFFFF',
+                {results.length > 0 && (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px',
+                    width: '100%'
+                  }}>
+                    {results.map(result => (
+                      <div
+                        key={result.id}
+                        onClick={() => onSelectResult(result.id)}
+                        style={{
+                          padding: theme.spacing.md,
+                          background: selectedResultId === result.id ? 'rgba(59, 134, 255, 0.08)' : 'rgba(255, 255, 255, 0.02)',
+                          borderRadius: 0,
+                          borderLeft: `6px solid ${getSeverityColor(result.severity)}`,
+                          width: '100%',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease-in-out'
+                        }}
+                        onMouseEnter={(e) => {
+                          const target = e.currentTarget;
+                          target.style.background = selectedResultId === result.id 
+                            ? 'rgba(59, 134, 255, 0.12)' 
+                            : 'rgba(255, 255, 255, 0.04)';
+                        }}
+                        onMouseLeave={(e) => {
+                          const target = e.currentTarget;
+                          target.style.background = selectedResultId === result.id 
+                            ? 'rgba(59, 134, 255, 0.08)' 
+                            : 'rgba(255, 255, 255, 0.02)';
+                        }}
+                      >
+                        <div style={{
                           display: 'flex',
-                          alignItems: 'center',
-                          gap: theme.spacing.xs
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: theme.spacing.xs
                         }}>
-                          <span style={{ color: '#4CAF50', fontSize: '16px' }}>★</span>
-                          Recommendations
-                        </h5>
-                        <ul style={{
-                          margin: `${theme.spacing.xs} 0 0 0`,
-                          paddingLeft: theme.spacing.lg,
-                          listStyle: 'disc'
-                        }}>
-                          {result.recommendations?.map((recommendation, index) => (
-                            <li 
-                              key={index}
-                              style={{
-                                fontSize: '12px',
-                                color: 'rgba(255, 255, 255, 0.64)',
-                                marginBottom: index < (result.recommendations?.length ?? 0) - 1 ? theme.spacing.xs : 0,
-                                lineHeight: '16px'
-                              }}
-                            >
-                              {recommendation}
-                            </li>
-                          ))}
-                        </ul>
+                          <div>
+                            <h4 style={{
+                              margin: 0,
+                              fontSize: '16px',
+                              color: 'rgba(255, 255, 255, 0.95)',
+                              fontWeight: theme.typography.weights.medium
+                            }}>{result.title}</h4>
+                            <p style={{
+                              margin: `${theme.spacing.xs} 0 0 0`,
+                              fontSize: '12px',
+                              color: 'rgba(255, 255, 255, 0.65)'
+                            }}>{result.category}</p>
+                          </div>
+                          <span style={{
+                            fontSize: theme.typography.sizes.small,
+                            padding: `${theme.spacing.xs} ${theme.spacing.sm}`,
+                            background: `${getSeverityColor(result.severity)}20`,
+                            color: getSeverityColor(result.severity),
+                            borderRadius: theme.borderRadius.small,
+                            fontWeight: theme.typography.weights.medium
+                          }}>
+                            {getSeverityLabel(result.severity)}
+                          </span>
+                        </div>
+
+                        <p style={{
+                          margin: `${theme.spacing.sm} 0`,
+                          fontSize: theme.typography.sizes.small,
+                          color: theme.colors.text,
+                          lineHeight: '16px'
+                        }}>{result.description}</p>
+
+                        {result.recommendations && result.recommendations.length > 0 && (
+                          <div style={{
+                            marginTop: theme.spacing.sm,
+                            padding: theme.spacing.sm,
+                            border: '1px solid #595753',
+                            borderRadius: theme.spacing.sm
+                          }}>
+                            <h5 style={{
+                              margin: 0,
+                              fontSize: '14px',
+                              fontWeight: theme.typography.weights.semibold,
+                              color: '#FFFFFF',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: theme.spacing.xs
+                            }}>
+                              <span style={{ color: '#4CAF50', fontSize: '16px' }}>★</span>
+                              Recommendations
+                            </h5>
+                            <ul style={{
+                              margin: `${theme.spacing.xs} 0 0 0`,
+                              paddingLeft: theme.spacing.lg,
+                              listStyle: 'disc'
+                            }}>
+                              {result.recommendations?.map((recommendation, index) => (
+                                <li 
+                                  key={index}
+                                  style={{
+                                    fontSize: '12px',
+                                    color: 'rgba(255, 255, 255, 0.64)',
+                                    marginBottom: index < (result.recommendations?.length ?? 0) - 1 ? theme.spacing.xs : 0,
+                                    lineHeight: '16px'
+                                  }}
+                                >
+                                  {recommendation}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             </div>
           )}

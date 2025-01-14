@@ -6,6 +6,7 @@ export const theme = {
     textSecondary: '#A0A0A0',
     background: '#1E1E1E',
     backgroundSecondary: '#2C2C2C',
+    backgroundTertiary: '#3C3C3C',
     border: '#333333',
     danger: '#F44336',
     warning: '#FF9700',

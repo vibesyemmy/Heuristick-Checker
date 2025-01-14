@@ -15,6 +15,7 @@ interface AppState {
   results: HeuristicResult[];
   message: string | null;
   hasScanned: boolean;
+  selectedResultId: string | null;
 }
 
 export class App extends React.Component<{}, AppState> {
@@ -23,10 +24,11 @@ export class App extends React.Component<{}, AppState> {
     this.state = {
       isLoading: false,
       error: null,
-      selectedElement: null,
+      selectedElement: null,  // Will be updated by initial selection message
       results: [],
       message: null,
-      hasScanned: false
+      hasScanned: false,
+      selectedResultId: null
     };
   }
 
@@ -38,9 +40,10 @@ export class App extends React.Component<{}, AppState> {
 
       switch (message.type) {
         case 'selection-change':
+          const selectedElement = message.elements[0] || null;
+          // Only update the selectedElement, keep other state
           this.setState({
-            selectedElement: message.elements[0] || null
-            // Don't reset results or hasScanned here
+            selectedElement
           });
           break;
         case 'analysis-complete':
@@ -80,8 +83,23 @@ export class App extends React.Component<{}, AppState> {
     console.log('Export results');
   };
 
+  handleResultSelect = (resultId: string) => {
+    const result = this.state.results.find(r => r.id === resultId);
+    if (result) {
+      // Send message to Figma to select the node
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'select-node', 
+          nodeId: result.nodeId 
+        } 
+      }, '*');
+      
+      this.setState({ selectedResultId: resultId });
+    }
+  };
+
   render() {
-    const { isLoading, error, selectedElement, results, message, hasScanned } = this.state;
+    const { isLoading, error, selectedElement, results, message, hasScanned, selectedResultId } = this.state;
 
     return (
       <Layout>
@@ -118,23 +136,34 @@ export class App extends React.Component<{}, AppState> {
                 color: theme.colors.textSecondary,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '4px',
+                minWidth: 0  // Allow flex item to shrink below its minimum content size
               }}>
                 <img 
                   src={infoIcon} 
                   alt="Info"
                   style={{ 
                     width: '16px', 
-                    height: '16px' 
+                    height: '16px',
+                    flexShrink: 0  // Prevent icon from shrinking
                   }}
                 />
                 {selectedElement ? (
-                  <>
+                  <span style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    minWidth: 0,  // Allow flex item to shrink
+                    whiteSpace: 'nowrap',  // Prevent text from wrapping
+                    overflow: 'hidden'  // Hide overflow
+                  }}>
                     Selected element: <span style={{ 
                       color: 'white', 
-                      fontWeight: 600 
+                      fontWeight: 600,
+                      textOverflow: 'ellipsis',  // Add ellipsis for overflow
+                      overflow: 'hidden'  // Hide overflow
                     }}>{selectedElement.name} ({selectedElement.type})</span>
-                  </>
+                  </span>
                 ) : 'Select an element to analyze'}
               </p>
             </div>
@@ -147,29 +176,31 @@ export class App extends React.Component<{}, AppState> {
                 onClick={this.handleScanElement}
                 disabled={!selectedElement || isLoading}
                 style={{
-                  background: theme.colors.primary,
-                  color: 'white',
+                  background: !selectedElement ? theme.colors.border : theme.colors.primary,
+                  color: !selectedElement ? theme.colors.textSecondary : 'white',
                   border: 'none',
                   height: '48px',
                   borderRadius: theme.borderRadius.large,
-                  cursor: 'pointer',
+                  cursor: !selectedElement ? 'not-allowed' : 'pointer',
                   fontSize: theme.typography.sizes.button,
                   fontFamily: theme.typography.fontFamily,
                   fontWeight: theme.typography.weights.semibold,
                   width: '100%',
-                  transition: 'background-color 0.2s'
+                  transition: 'all 0.2s ease',
+                  opacity: !selectedElement ? 0.7 : 1
                 }}
               >
-                {isLoading ? 'Analyzing...' : 'Scan Element'}
+                {isLoading ? 'Analyzing...' : !selectedElement ? 'Select an element to scan' : 'Scan Element'}
               </button>
 
               <Results 
                 results={results}
                 selectedElement={!!selectedElement}
                 hasScanned={hasScanned}
-                onExport={results.length > 0 ? this.handleExportResults : undefined}
-                message={message || undefined}
                 error={error || undefined}
+                message={message || undefined}
+                selectedResultId={selectedResultId || undefined}
+                onSelectResult={this.handleResultSelect}
               />
             </div>
           </div>
