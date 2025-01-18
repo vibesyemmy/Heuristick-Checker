@@ -262,26 +262,37 @@ function findEffectiveBackground(node: SceneNode): ColorWithOpacity {
 
 // Color utilities
 function blendColorWithOpacity(top: ColorWithOpacity, bottom: ColorWithOpacity): ColorWithOpacity {
-  const topAlpha = top.fillOpacity * top.layerOpacity;
-  const bottomAlpha = bottom.fillOpacity * bottom.layerOpacity;
-  const compositeAlpha = topAlpha + bottomAlpha * (1 - topAlpha);
-
-  if (compositeAlpha === 0) {
+  // Calculate effective opacity considering both fill and layer opacity
+  const topEffectiveOpacity = top.fillOpacity * top.layerOpacity;
+  const bottomEffectiveOpacity = bottom.fillOpacity * bottom.layerOpacity;
+  
+  // If both layers are fully transparent, return transparent color
+  if (topEffectiveOpacity === 0 && bottomEffectiveOpacity === 0) {
     return {
-      color: { r: 1, g: 1, b: 1 },
-      fillOpacity: 1,
-      layerOpacity: 1
+      color: { r: 0, g: 0, b: 0, a: 0 },
+      fillOpacity: 0,
+      layerOpacity: 0
     };
   }
-
+  
+  // Blend colors using alpha compositing formula
+  const resultOpacity = topEffectiveOpacity + bottomEffectiveOpacity * (1 - topEffectiveOpacity);
+  
+  // Helper function to blend a single color channel
+  const blendChannel = (a: number, b: number): number => {
+    if (resultOpacity === 0) return 0;
+    return (a * topEffectiveOpacity + b * bottomEffectiveOpacity * (1 - topEffectiveOpacity)) / resultOpacity;
+  };
+  
   return {
     color: {
-      r: (top.color.r * topAlpha + bottom.color.r * bottomAlpha * (1 - topAlpha)) / compositeAlpha,
-      g: (top.color.g * topAlpha + bottom.color.g * bottomAlpha * (1 - topAlpha)) / compositeAlpha,
-      b: (top.color.b * topAlpha + bottom.color.b * bottomAlpha * (1 - topAlpha)) / compositeAlpha
+      r: blendChannel(top.color.r, bottom.color.r),
+      g: blendChannel(top.color.g, bottom.color.g),
+      b: blendChannel(top.color.b, bottom.color.b),
+      a: resultOpacity
     },
-    fillOpacity: compositeAlpha,
-    layerOpacity: 1
+    fillOpacity: resultOpacity,
+    layerOpacity: 1 // The blended color now has the opacity baked in
   };
 }
 
@@ -299,17 +310,25 @@ function colorWithOpacityToHex(color: ColorWithOpacity): string {
 
 // Contrast calculation
 function calculateContrastRatio(foreground: ColorWithOpacity, background: ColorWithOpacity): number {
-  const fgHex = colorWithOpacityToHex(foreground);
+  // First blend the colors with their respective opacities
+  const blendedFg = blendColorWithOpacity(foreground, background);
+  
+  // Convert to hex for luminosity calculation
+  const fgHex = colorWithOpacityToHex(blendedFg);
   const bgHex = colorWithOpacityToHex(background);
   
   const fgColor = Color(fgHex);
   const bgColor = Color(bgHex);
   
-  const fgLuminance = fgColor.luminosity();
-  const bgLuminance = bgColor.luminosity();
+  // Calculate luminance considering opacity
+  const fgLuminance = fgColor.luminosity() * (blendedFg.fillOpacity * blendedFg.layerOpacity);
+  const bgLuminance = bgColor.luminosity() * (background.fillOpacity * background.layerOpacity);
   
   const lighter = Math.max(fgLuminance, bgLuminance);
   const darker = Math.min(fgLuminance, bgLuminance);
+  
+  // If both elements are completely transparent, return 1 (no contrast)
+  if (lighter === 0 && darker === 0) return 1;
   
   return (lighter + 0.05) / (darker + 0.05);
 }
@@ -365,12 +384,13 @@ function analyzeIconContrast(node: SceneNode, config = defaultConfig): IconAnaly
   };
 }
 
-function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
+function extractIconColorsWithOpacity(node: SceneNode, parentOpacity: number = 1): ColorWithOpacity[] {
   const colors: ColorWithOpacity[] = [];
   const nodeOpacity = 'opacity' in node ? (node.opacity || 1) : 1;
+  const effectiveOpacity = nodeOpacity * parentOpacity;  // Multiply with parent's opacity
 
   // Helper function to add a color with proper opacity
-  function addColor(paint: Paint, nodeOpacity: number) {
+  function addColor(paint: Paint, layerOpacity: number) {
     if (paint.type === 'SOLID' && paint.visible) {
       colors.push({
         color: {
@@ -380,7 +400,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
           a: paint.opacity
         },
         fillOpacity: paint.opacity || 1,
-        layerOpacity: nodeOpacity
+        layerOpacity  // Use the cascaded opacity
       });
     } else if (paint.type === 'GRADIENT_LINEAR' || paint.type === 'GRADIENT_RADIAL' || paint.type === 'GRADIENT_ANGULAR') {
       // For gradients, add each stop color
@@ -393,7 +413,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
             a: stop.color.a
           },
           fillOpacity: stop.color.a || 1,
-          layerOpacity: nodeOpacity
+          layerOpacity  // Use the cascaded opacity
         });
       });
     }
@@ -403,7 +423,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
   if ('fills' in node) {
     const fills = node.fills as Paint[];
     if (Array.isArray(fills)) {
-      fills.forEach(fill => addColor(fill, nodeOpacity));
+      fills.forEach(fill => addColor(fill, effectiveOpacity));
     }
   }
 
@@ -411,7 +431,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
   if ('strokes' in node) {
     const strokes = node.strokes as Paint[];
     if (Array.isArray(strokes)) {
-      strokes.forEach(stroke => addColor(stroke, nodeOpacity));
+      strokes.forEach(stroke => addColor(stroke, effectiveOpacity));
     }
   }
 
@@ -419,7 +439,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
   if ('backgrounds' in node) {
     const backgrounds = (node as FrameNode).backgrounds;
     if (Array.isArray(backgrounds)) {
-      backgrounds.forEach(bg => addColor(bg, nodeOpacity));
+      backgrounds.forEach(bg => addColor(bg, effectiveOpacity));
     }
   }
 
@@ -437,7 +457,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
               a: effect.color.a || 1
             },
             fillOpacity: effect.color.a || 1,
-            layerOpacity: nodeOpacity * (effect.spread || 1)
+            layerOpacity: effectiveOpacity * (effect.spread || 1)  // Include spread in opacity calculation
           });
         }
       });
@@ -450,7 +470,7 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
     if (vectorNode.vectorNetwork && vectorNode.vectorNetwork.regions) {
       vectorNode.vectorNetwork.regions.forEach(region => {
         if (region.fills) {
-          region.fills.forEach(fill => addColor(fill, nodeOpacity));
+          region.fills.forEach(fill => addColor(fill, effectiveOpacity));
         }
       });
     }
@@ -461,17 +481,17 @@ function extractIconColorsWithOpacity(node: SceneNode): ColorWithOpacity[] {
     const instance = node as InstanceNode;
     // Get fills and strokes directly from the instance
     if (instance.fills) {
-      (instance.fills as Paint[]).forEach(fill => addColor(fill, nodeOpacity));
+      (instance.fills as Paint[]).forEach(fill => addColor(fill, effectiveOpacity));
     }
     if (instance.strokes) {
-      (instance.strokes as Paint[]).forEach(stroke => addColor(stroke, nodeOpacity));
+      (instance.strokes as Paint[]).forEach(stroke => addColor(stroke, effectiveOpacity));
     }
   }
 
-  // Recursively check children
+  // Recursively check children with cascaded opacity
   if ('children' in node) {
     for (const child of node.children) {
-      colors.push(...extractIconColorsWithOpacity(child));
+      colors.push(...extractIconColorsWithOpacity(child, effectiveOpacity));
     }
   }
 

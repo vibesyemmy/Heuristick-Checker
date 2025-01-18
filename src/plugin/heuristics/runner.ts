@@ -2,17 +2,22 @@ import { HeuristicResult } from './types';
 import { heuristicChecks } from './registry';
 
 export async function runHeuristicChecks(node: SceneNode): Promise<HeuristicResult[]> {
-  const allResults: HeuristicResult[] = [];
+  const results: HeuristicResult[] = [];
   
-  for (const heuristic of heuristicChecks) {
+  for (const check of heuristicChecks) {
     try {
-      console.log(`Running heuristic check: ${heuristic.name}`);
-      const results = await heuristic.check(node);
-      allResults.push(...results);
+      const checkResults = await check.check(node);
+      if (checkResults) {
+        if (Array.isArray(checkResults)) {
+          results.push(...checkResults);
+        } else {
+          results.push(checkResults);
+        }
+      }
     } catch (error) {
-      console.error(`Error in heuristic check ${heuristic.name}:`, error);
+      console.error(`Error running heuristic check: ${error}`);
     }
   }
-  
-  return allResults;
+
+  return results;
 }

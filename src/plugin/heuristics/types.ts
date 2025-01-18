@@ -41,7 +41,8 @@ export interface HeuristicResult {
   isCompliant?: boolean;
 }
 
-export type HeuristicCheck = (node: SceneNode) => Promise<HeuristicResult[]>;
+// Type for a heuristic check function
+export type HeuristicCheck = (node: SceneNode) => Promise<HeuristicResult | HeuristicResult[] | null>;
 
 export interface HeuristicDefinition {
   id: string;
