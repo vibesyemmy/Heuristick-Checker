@@ -38,14 +38,15 @@ interface MissingLoaderIssue {
 type ProgressFeedbackIssue = LoaderValidationIssue | MissingLoaderIssue;
 
 // Helper function to get node context
-function getNodeContext(node: SceneNode): NodeContext {
+async function getNodeContext(node: SceneNode): Promise<NodeContext> {
   if (!('name' in node)) return null;
   
   const nodeName = node.name.toLowerCase();
   
   // Check if it's an icon
   if (nodeName.includes('icon') || 
-      (node.type === 'INSTANCE' && node.mainComponent?.name.toLowerCase().includes('icon'))) {
+      (node.type === 'INSTANCE' && 
+       (await node.getMainComponentAsync())?.name.toLowerCase().includes('icon'))) {
     return 'icon';
   }
   
@@ -57,7 +58,7 @@ function getNodeContext(node: SceneNode): NodeContext {
   // Check for buttons
   if (node.type === 'INSTANCE' && 
       (nodeName.includes('button') || 
-       node.mainComponent?.name.toLowerCase().includes('button'))) {
+       (await node.getMainComponentAsync())?.name.toLowerCase().includes('button'))) {
     return 'button';
   }
   
@@ -78,11 +79,11 @@ function getNodeContext(node: SceneNode): NodeContext {
 }
 
 // Helper function to detect loading indicators
-function detectLoadingIndicators(node: SceneNode): boolean {
+async function detectLoadingIndicators(node: SceneNode): Promise<boolean> {
   if (!('name' in node)) return false;
   
   const nodeName = node.name.toLowerCase();
-  const context = getNodeContext(node);
+  const context = await getNodeContext(node);
   
   // Skip text nodes unless they're part of a loading component
   if (context === 'text' && !nodeName.includes('loading component')) {
@@ -108,11 +109,11 @@ function detectLoadingIndicators(node: SceneNode): boolean {
 }
 
 // Helper function to detect feedback elements
-function detectFeedbackElements(node: SceneNode): boolean {
+async function detectFeedbackElements(node: SceneNode): Promise<boolean> {
   if (!('name' in node)) return false;
   
   const nodeName = node.name.toLowerCase();
-  const context = getNodeContext(node);
+  const context = await getNodeContext(node);
   
   // Only consider actual feedback components
   return context !== 'icon' && context !== 'text' &&
@@ -122,8 +123,8 @@ function detectFeedbackElements(node: SceneNode): boolean {
 }
 
 // Helper function to check if node needs a loader
-function inferLoaderNeed(node: SceneNode): { needs: boolean; triggerType: keyof typeof LOADING_TRIGGERS | null } {
-  const context = getNodeContext(node);
+async function inferLoaderNeed(node: SceneNode): Promise<{ needs: boolean; triggerType: keyof typeof LOADING_TRIGGERS | null }> {
+  const context = await getNodeContext(node);
   if (!context || !('name' in node)) return { needs: false, triggerType: null };
   
   const nodeName = node.name.toLowerCase();
@@ -155,9 +156,9 @@ function inferLoaderNeed(node: SceneNode): { needs: boolean; triggerType: keyof 
 }
 
 // Helper function to validate loader implementation
-function validateLoader(node: SceneNode): LoaderValidationIssue | null {
+async function validateLoader(node: SceneNode): Promise<LoaderValidationIssue | null> {
   const issues: string[] = [];
-  const context = getNodeContext(node);
+  const context = await getNodeContext(node);
   
   // Only validate actual loaders
   if (context === 'icon' || context === 'text') return null;
@@ -172,14 +173,14 @@ function validateLoader(node: SceneNode): LoaderValidationIssue | null {
   
   // Check if loader has states/variants
   if (node.type === 'INSTANCE') {
-    const mainComponent = node.mainComponent;
+    const mainComponent = await node.getMainComponentAsync();
     if (mainComponent?.parent?.type !== 'COMPONENT_SET') {
       issues.push('Loader lacks state variations. Consider adding different states (e.g., determinate/indeterminate).');
     }
   }
   
   // Check if loader has associated feedback
-  if (!detectFeedbackElements(node)) {
+  if (!(await detectFeedbackElements(node))) {
     issues.push('No feedback elements found near the loader. Consider adding status messages or tooltips.');
   }
   
@@ -232,13 +233,13 @@ export async function analyzeProgressFeedback(node: SceneNode): Promise<Heuristi
     if ('visible' in node && !node.visible) return;
 
     // Step 1: Validate existing loaders
-    if (detectLoadingIndicators(node)) {
-      const validationIssue = validateLoader(node);
+    if (await detectLoadingIndicators(node)) {
+      const validationIssue = await validateLoader(node);
       if (validationIssue) issues.push(validationIssue);
     }
     // Step 2: Check if loader is needed but missing
     else {
-      const { needs, triggerType } = inferLoaderNeed(node);
+      const { needs, triggerType } = await inferLoaderNeed(node);
       if (needs && triggerType) {
         issues.push({
           type: 'missing-loader',
