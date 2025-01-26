@@ -1,0 +1,104 @@
+# Heuristic Checker - Figma Plugin
+
+## Project Overview
+The Heuristic Checker is a Figma plugin designed to automatically check and identify potential accessibility and usability issues in Figma designs. It helps designers ensure their work meets accessibility standards and follows best design practices.
+
+## Core Features
+1. Text Contrast Checking
+   - Analyzes text elements against their backgrounds
+   - Validates WCAG AA contrast requirements
+   - Differentiates between normal and large text requirements
+   - Provides specific contrast ratio measurements
+
+2. Issue Reporting
+   - Displays found issues in an organized list
+   - Shows severity levels (high, medium, low)
+   - Provides suggestions for fixing issues
+   - Allows direct navigation to problematic elements
+
+3. Interactive UI
+   - Scan button to initiate checks
+   - Close button to exit plugin
+   - Click-to-highlight functionality for issues
+   - Real-time feedback during scanning
+
+## Project Structure
+```
+/
+├── src/
+│   ├── plugin/
+│   │   ├── code.ts         # Main plugin logic
+│   │   └── heuristics.ts   # Accessibility checking functions
+│   ├── ui/
+│   │   ├── components/
+│   │   │   └── App.tsx     # Main React component
+│   │   ├── index.html      # Plugin UI template
+│   │   ├── styles.css      # UI styling
+│   │   └── ui.tsx          # UI entry point
+│   └── types.ts            # TypeScript type definitions
+├── dist/                   # Compiled files
+├── manifest.json           # Plugin configuration
+└── webpack.config.js       # Build configuration
+```
+
+## Technical Stack
+- TypeScript for type safety and better development experience
+- React for UI components and state management
+- Webpack for building and bundling
+- Figma Plugin API for design file interaction
+
+## Development Guidelines
+1. Code Organization
+   - Keep UI logic separate from plugin logic
+   - Use TypeScript interfaces for type safety
+   - Maintain clear separation of concerns
+
+2. Accessibility Checks
+   - Follow WCAG AA standards
+   - Provide clear, actionable feedback
+   - Include specific measurements and thresholds
+
+3. User Interface
+   - Keep UI simple and intuitive
+   - Provide clear feedback for actions
+   - Ensure error states are handled gracefully
+
+## Build Process
+1. Development:
+   - Run `npm run build` to compile the plugin
+   - Files are output to the `dist` directory
+   - The manifest points to compiled files
+
+2. Plugin Structure:
+   - code.js: Contains plugin logic
+   - ui.js: Contains UI logic
+   - ui.html: Entry point for the plugin UI
+
+## Current Status
+- Basic plugin structure implemented
+- Text contrast checking functionality working
+- UI components created but experiencing rendering issues
+- Need to resolve script loading in plugin environment
+
+## Next Steps
+1. Fix UI rendering issues
+2. Add more accessibility checks
+3. Improve error handling and feedback
+4. Add user documentation
+5. Implement automated testing
+
+## Known Issues
+1. UI not rendering properly in plugin window
+2. Need to verify script loading
+3. Need to improve error logging and debugging
+4. Bundle size warnings from webpack
+
+## Future Enhancements
+1. Additional accessibility checks
+   - Touch target size
+   - Color blindness simulation
+   - Reading order
+2. Batch processing capabilities
+3. Custom rule configuration
+4. Report generation
+5. Integration with design systems

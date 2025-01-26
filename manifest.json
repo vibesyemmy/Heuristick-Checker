@@ -1,0 +1,20 @@
+{
+  "name": "Heuristic Checker",
+  "id": "1234567890123456789",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": [
+      "https://fonts.googleapis.com",
+      "https://fonts.gstatic.com",
+      "https://static.figma.com"
+    ]
+  },
+  "permissions": ["currentuser"],
+  "capabilities": [],
+  "enablePrivatePluginApi": false,
+  "enableProposedApi": false,
+  "documentAccess": "dynamic-page"
+}
