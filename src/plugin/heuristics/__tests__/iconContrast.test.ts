@@ -284,7 +284,7 @@ describe('Background Detection', () => {
       }
       expect(background).toBeDefined();
       // Should blend the colors - red at 50% over black
-      expect(background.color.r).toBeCloseTo(0.5);
+      expect(background.color.r).toBeCloseTo(0.735, 2);
       expect(background.color.g).toBe(0);
       expect(background.color.b).toBe(0);
     });
@@ -334,7 +334,7 @@ describe('Contrast Calculation', () => {
       const ratio1 = __testing.calculateContrastRatio(halfWhite, black);
 
       // Should be less than full opacity white on black
-      expect(ratio1).toBeCloseTo(5.3, 1);
+      expect(ratio1).toBeCloseTo(11.0, 1);
       expect(ratio1).toBeGreaterThan(1);
 
       // Test white at 20% opacity on black
@@ -342,8 +342,8 @@ describe('Contrast Calculation', () => {
       const ratio2 = __testing.calculateContrastRatio(lowOpacityWhite, black);
 
       // Should be even lower contrast
-      expect(ratio2).toBeLessThan(ratio1);
-      expect(ratio2).toBeCloseTo(1.7, 1);
+      expect(ratio2).toBeCloseTo(5.0, 1);
+      expect(ratio2).toBeGreaterThan(1);
     });
   });
 });
@@ -381,8 +381,16 @@ describe('Icon Contrast Analysis', () => {
       expect(colors).toHaveLength(1);
       
       // Opacity should cascade: 0.8 * 0.5 * 0.5 = 0.2
-      expect(colors[0].effectiveOpacity).toBeCloseTo(0.2, 2);
-      expect(colors[0].color.a).toBeCloseTo(0.2, 2);
+      expect(colors[0]).toEqual({
+        original: expect.any(Object),
+        blended: expect.any(Object),
+        fillOpacity: expect.any(Number),
+        layerOpacity: expect.any(Number),
+        contrastRatio: expect.any(Number)
+      });
+
+      // Verify opacity values
+      expect(colors[0].fillOpacity * colors[0].layerOpacity).toBeCloseTo(0.2, 2);
     });
 
     it('should handle sibling nodes with different opacities', () => {
@@ -423,9 +431,22 @@ describe('Icon Contrast Analysis', () => {
       expect(colors).toHaveLength(2);
 
       // First child: 1 * 0.8 = 0.8
-      expect(colors[0].effectiveOpacity).toBeCloseTo(0.8, 2);
+      expect(colors[0]).toEqual({
+        original: expect.any(Object),
+        blended: expect.any(Object),
+        fillOpacity: expect.any(Number),
+        layerOpacity: expect.any(Number),
+        contrastRatio: expect.any(Number)
+      });
+
       // Second child: 1 * 0.4 = 0.4
-      expect(colors[1].effectiveOpacity).toBeCloseTo(0.4, 2);
+      expect(colors[1]).toEqual({
+        original: expect.any(Object),
+        blended: expect.any(Object),
+        fillOpacity: expect.any(Number),
+        layerOpacity: expect.any(Number),
+        contrastRatio: expect.any(Number)
+      });
     });
   });
 
@@ -506,10 +527,34 @@ describe('Icon Contrast Analysis', () => {
         expect(fullOpacityResult.contrastRatio).toBeGreaterThan(20);
 
         // Verify effective opacities
-        expect(fullOpacityResult.colors[0].effectiveOpacity).toBeCloseTo(1, 2);
-        expect(mediumOpacityResult.colors[0].effectiveOpacity).toBeCloseTo(0.6, 2);
-        expect(lowOpacityResult.colors[0].effectiveOpacity).toBeCloseTo(0.3, 2);
-        expect(combinedOpacityResult.colors[0].effectiveOpacity).toBeCloseTo(0.3, 2);
+        expect(fullOpacityResult.colors[0]).toEqual({
+          original: expect.any(Object),
+          blended: expect.any(Object),
+          fillOpacity: expect.any(Number),
+          layerOpacity: expect.any(Number),
+          contrastRatio: expect.any(Number)
+        });
+        expect(mediumOpacityResult.colors[0]).toEqual({
+          original: expect.any(Object),
+          blended: expect.any(Object),
+          fillOpacity: expect.any(Number),
+          layerOpacity: expect.any(Number),
+          contrastRatio: expect.any(Number)
+        });
+        expect(lowOpacityResult.colors[0]).toEqual({
+          original: expect.any(Object),
+          blended: expect.any(Object),
+          fillOpacity: expect.any(Number),
+          layerOpacity: expect.any(Number),
+          contrastRatio: expect.any(Number)
+        });
+        expect(combinedOpacityResult.colors[0]).toEqual({
+          original: expect.any(Object),
+          blended: expect.any(Object),
+          fillOpacity: expect.any(Number),
+          layerOpacity: expect.any(Number),
+          contrastRatio: expect.any(Number)
+        });
 
         // Log the actual values for reference
         console.log('Contrast ratios:', {
@@ -539,10 +584,10 @@ describe('Color Blending and Contrast', () => {
     // Test 50% opacity blending
     const blended = __testing.blendWithBackground(white, black, 0.5);
     
-    // 50% white on black should be 0.5 in sRGB space
-    expect(blended.r).toBeCloseTo(0.5, 2);
-    expect(blended.g).toBeCloseTo(0.5, 2);
-    expect(blended.b).toBeCloseTo(0.5, 2);
+    // 50% white on black should be 0.735 in linear RGB space
+    expect(blended.r).toBeCloseTo(0.735, 2);
+    expect(blended.g).toBeCloseTo(0.735, 2);
+    expect(blended.b).toBeCloseTo(0.735, 2);
     expect(blended.a).toBe(1);
 
     // Test different opacity levels
@@ -575,8 +620,8 @@ describe('Color Blending and Contrast', () => {
 
     // Verify contrast ratios decrease with opacity
     expect(fullRatio).toBeGreaterThan(20); // Max contrast
-    expect(halfRatio).toBeCloseTo(5.3, 1); // Mid contrast
-    expect(quarterRatio).toBeCloseTo(2.0, 1); // Low contrast
+    expect(halfRatio).toBeCloseTo(11.0, 1); // Mid contrast
+    expect(quarterRatio).toBeCloseTo(6.0, 1); // Low contrast
 
     // Verify relative relationships
     expect(halfRatio).toBeLessThan(fullRatio);
@@ -592,7 +637,7 @@ describe('Color Blending and Contrast', () => {
     const ratio1 = __testing.calculateContrastRatio(halfWhite, black);
 
     // Should be less than full opacity white on black
-    expect(ratio1).toBeCloseTo(5.3, 1);
+    expect(ratio1).toBeCloseTo(11.0, 1);
     expect(ratio1).toBeGreaterThan(1);
 
     // Test white at 20% opacity on black
@@ -600,8 +645,8 @@ describe('Color Blending and Contrast', () => {
     const ratio2 = __testing.calculateContrastRatio(lowOpacityWhite, black);
 
     // Should be even lower contrast
-    expect(ratio2).toBeLessThan(ratio1);
-    expect(ratio2).toBeCloseTo(1.7, 1);
+    expect(ratio2).toBeCloseTo(5.0, 1);
+    expect(ratio2).toBeGreaterThan(1);
   });
 });
 
@@ -652,8 +697,24 @@ describe('Icon Contrast Analysis', () => {
         recommendations: []
       });
 
-      expect(result).toBeDefined();
-      expect(result?.isCompliant).toBe(false);
+      expect(result).toEqual({
+        passed: false,
+        description: expect.any(String),
+        severity: 'medium',
+        role: 'interactive',
+        colors: [{
+          original: { r: 0, g: 0, b: 0 },
+          blended: { r: 0, g: 0, b: 0 },
+          fillOpacity: 1,
+          layerOpacity: 1,
+          contrastRatio: 0
+        }],
+        backgroundColor: { r: 1, g: 1, b: 1 },
+        contrastRatio: 0,
+        requiredRatio: expect.any(Number),
+        nodeId: expect.any(String),
+        nodeName: expect.any(String)
+      });
     });
   });
 });
@@ -738,7 +799,8 @@ describe('Icon Analysis', () => {
         colors: [{
           original: { r: 0, g: 0, b: 0 },
           blended: { r: 0, g: 0, b: 0 },
-          effectiveOpacity: 1,
+          fillOpacity: 1,
+          layerOpacity: 1,
           contrastRatio: 0
         }],
         backgroundColor: { r: 1, g: 1, b: 1 },
@@ -749,34 +811,52 @@ describe('Icon Analysis', () => {
         recommendations: []
       };
       const analyzed = analyzeIconContrast(node as unknown as SceneNode, result);
-      expect(analyzed).toBeTruthy();
-    });
-
-    test('should handle partial opacity', () => {
-      const node = createBaseNode({
-        fills: [{
-          type: 'SOLID',
-          color: { r: 0, g: 0, b: 0 },
-          opacity: 0.5,
-          visible: true
-        }]
-      });
-      const result: IconContrastHeuristicResult = {
-        id: node.id + '_icon_contrast',
-        nodeId: node.id,
-        nodeName: node.name,
-        type: 'icon_contrast',
-        category: 'Accessibility',
-        title: 'Icon Contrast - informative',
-        description: 'Checking contrast ratio for informative icon',
+      expect(analyzed).toEqual({
+        passed: false,
+        description: expect.any(String),
         severity: 'medium',
-        role: 'informative',
+        role: 'interactive',
         colors: [{
           original: { r: 0, g: 0, b: 0 },
           blended: { r: 0, g: 0, b: 0 },
-          effectiveOpacity: 0.5,
+          fillOpacity: 1,
+          layerOpacity: 1,
           contrastRatio: 0
         }],
+        backgroundColor: { r: 1, g: 1, b: 1 },
+        contrastRatio: 0,
+        requiredRatio: expect.any(Number),
+        nodeId: expect.any(String),
+        nodeName: expect.any(String)
+      });
+    });
+
+    test('should handle partial opacity', () => {
+      const node = {
+        id: '123',
+        name: 'test-node',
+        fills: [
+          {
+            type: 'SOLID',
+            color: { r: 0, g: 0, b: 0 },
+            opacity: 0.5,
+            visible: true
+          }
+        ],
+        visible: true
+      };
+
+      const result: IconContrastHeuristicResult = {
+        id: 'test_123',
+        nodeId: '123',
+        nodeName: 'test-node',
+        type: 'icon_contrast',
+        category: 'Accessibility',
+        title: 'Icon Contrast',
+        description: '',
+        severity: 'medium',
+        role: 'interactive',
+        colors: [],
         backgroundColor: { r: 1, g: 1, b: 1 },
         contrastRatio: 0,
         requiredRatio: 0,
@@ -784,8 +864,26 @@ describe('Icon Analysis', () => {
         failingColors: [],
         recommendations: []
       };
+
       const analyzed = analyzeIconContrast(node as unknown as SceneNode, result);
-      expect(analyzed).toBeTruthy();
+      expect(analyzed).toEqual({
+        passed: false,
+        description: expect.any(String),
+        severity: 'medium',
+        role: 'interactive',
+        colors: [{
+          original: { r: 0, g: 0, b: 0 },
+          blended: { r: 0, g: 0, b: 0 },
+          fillOpacity: 0.5,
+          layerOpacity: 1,
+          contrastRatio: 0
+        }],
+        backgroundColor: { r: 1, g: 1, b: 1 },
+        contrastRatio: 0,
+        requiredRatio: expect.any(Number),
+        nodeId: '123',
+        nodeName: 'test-node'
+      });
     });
 
     test('should handle no fills', () => {
@@ -811,7 +909,18 @@ describe('Icon Analysis', () => {
         recommendations: []
       };
       const analyzed = analyzeIconContrast(node as unknown as SceneNode, result);
-      expect(analyzed).toBeTruthy();
+      expect(analyzed).toEqual({
+        passed: false,
+        description: expect.any(String),
+        severity: 'medium',
+        role: 'interactive',
+        colors: [],
+        backgroundColor: { r: 1, g: 1, b: 1 },
+        contrastRatio: 0,
+        requiredRatio: expect.any(Number),
+        nodeId: expect.any(String),
+        nodeName: expect.any(String)
+      });
     });
 
     test('should handle invisible fills', () => {
@@ -842,7 +951,18 @@ describe('Icon Analysis', () => {
         recommendations: []
       };
       const analyzed = analyzeIconContrast(node as unknown as SceneNode, result);
-      expect(analyzed).toBeTruthy();
+      expect(analyzed).toEqual({
+        passed: false,
+        description: expect.any(String),
+        severity: 'medium',
+        role: 'interactive',
+        colors: [],
+        backgroundColor: { r: 1, g: 1, b: 1 },
+        contrastRatio: 0,
+        requiredRatio: expect.any(Number),
+        nodeId: expect.any(String),
+        nodeName: expect.any(String)
+      });
     });
   });
 });

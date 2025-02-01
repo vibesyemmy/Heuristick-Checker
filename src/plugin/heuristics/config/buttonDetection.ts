@@ -12,14 +12,14 @@ export interface ButtonDetectionConfig {
 }
 
 export const defaultButtonConfig: ButtonDetectionConfig = {
-  minScore: 5, // Minimum score to be considered a button
+  minScore: 7, // Increased from 5 to require more evidence
   namingPatterns: [
-    'button',
-    'btn',
-    'cta',
-    'action',
-    'submit',
-    'toggle',
+    '^button',
+    '^btn[^-]',
+    'button$',
+    '^cta$',
+    'submit$',
+    'toggle$'
   ],
   commonActionWords: [
     'submit',
@@ -45,9 +45,9 @@ export const defaultButtonConfig: ButtonDetectionConfig = {
     'learn more',
   ],
   dimensionRanges: {
-    minHeight: 24,
+    minHeight: 32, // Increased from 24 to better distinguish from icons
     maxHeight: 60,
-    minWidth: 60,
+    minWidth: 80,  // Increased from 60 to better distinguish from icons
     maxWidth: 300,
   },
   commonRadii: [0, 4, 8, 12, 16, 20, 24, 32, 9999], // 9999 for fully rounded

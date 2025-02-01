@@ -5,7 +5,7 @@ function toLinear(value: number): number {
   // Ensure value is a number and clamp between 0 and 1
   value = typeof value === 'number' ? Math.max(0, Math.min(1, value)) : 1;
   
-  if (value <= 0.03928) {
+  if (value <= 0.04045) {
     return value / 12.92;
   }
   return Math.pow((value + 0.055) / 1.055, 2.4);
@@ -16,10 +16,10 @@ function fromLinear(value: number): number {
   // Ensure value is a number and clamp between 0 and 1
   value = typeof value === 'number' ? Math.max(0, Math.min(1, value)) : 1;
   
-  if (value <= 0.00304) {
+  if (value <= 0.0031308) {
     return value * 12.92;
   }
-  return 1.055 * Math.pow(value, 1/2.4) - 0.055;
+  return 1.055 * Math.pow(value, 1 / 2.4) - 0.055;
 }
 
 // Calculate relative luminance
@@ -33,44 +33,50 @@ function calculateRelativeLuminance(color: FigmaColor): number {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-// Blend colors in linear RGB space
+/**
+ * Blends colors in linear RGB space to account for gamma correction
+ * @param foreground - sRGB color with optional alpha
+ * @param background - sRGB background color
+ * @param opacity - Blend opacity (0-1)
+ * @returns Blended sRGB color with combined opacity
+ */
 export function blendWithBackground(foreground: FigmaColor, background: FigmaColor, opacity: number): FigmaColor {
-  // Ensure opacity is a number and clamp between 0 and 1
-  opacity = typeof opacity === 'number' ? Math.max(0, Math.min(1, opacity)) : 1;
+  // Ensure opacity is between 0 and 1
+  opacity = Math.max(0, Math.min(1, opacity));
 
-  // Debug log
-  console.log('Blending colors:', {
-    foreground,
-    background,
-    opacity
-  });
+  // If opacity is 0, return background color
+  if (opacity === 0) {
+    return { ...background };
+  }
 
-  // Convert to linear RGB
-  const fr = toLinear(foreground.r);
-  const fg = toLinear(foreground.g);
-  const fb = toLinear(foreground.b);
-  
-  const br = toLinear(background.r);
-  const bg = toLinear(background.g);
-  const bb = toLinear(background.b);
+  // If opacity is 1, return foreground color
+  if (opacity === 1) {
+    return { ...foreground };
+  }
 
-  // Blend in linear space
-  const r = fr * opacity + br * (1 - opacity);
-  const g = fg * opacity + bg * (1 - opacity);
-  const b = fb * opacity + bb * (1 - opacity);
-
-  // Convert back to sRGB
-  const result = {
-    r: fromLinear(r),
-    g: fromLinear(g),
-    b: fromLinear(b),
-    a: 1 // Always return fully opaque color after blending
+  // Convert to linear RGB for blending
+  const fgLinear = {
+    r: toLinear(foreground.r),
+    g: toLinear(foreground.g),
+    b: toLinear(foreground.b)
   };
 
-  // Debug log
-  console.log('Blend result:', result);
+  const bgLinear = {
+    r: toLinear(background.r),
+    g: toLinear(background.g),
+    b: toLinear(background.b)
+  };
 
-  return result;
+  // For each channel, blend in linear space:
+  // C = α × Fg + (1-α) × Bg
+  // where α is the opacity, Fg is foreground color, Bg is background color
+  const blended = {
+    r: fromLinear((fgLinear.r * opacity) + (bgLinear.r * (1 - opacity))),
+    g: fromLinear((fgLinear.g * opacity) + (bgLinear.g * (1 - opacity))),
+    b: fromLinear((fgLinear.b * opacity) + (bgLinear.b * (1 - opacity)))
+  };
+
+  return blended;
 }
 
 // Calculate contrast ratio between two colors
@@ -82,18 +88,12 @@ export function calculateContrastRatio(color1: FigmaColor, color2: FigmaColor): 
   // Calculate contrast ratio
   const lighter = Math.max(l1, l2);
   const darker = Math.min(l1, l2);
+  
+  // Calculate ratio with standard formula
   const ratio = (lighter + 0.05) / (darker + 0.05);
   
-  // Debug log
-  console.log('Contrast calculation:', {
-    color1,
-    color2,
-    l1,
-    l2,
-    ratio
-  });
-  
-  return ratio;
+  // Round to 2 decimal places for consistency
+  return Math.round(ratio * 100) / 100;
 }
 
 // Convert Figma color to hex string

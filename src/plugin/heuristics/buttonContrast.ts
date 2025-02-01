@@ -547,18 +547,22 @@ export function evaluateButtonContrast(node: SceneNode): ButtonContrastIssue[] {
 function traverseNodesForButtons(node: SceneNode, issues: ButtonContrastIssue[]) {
   try {
     // Check if current node is a button
-    const buttonDetection = detectButton(node, defaultButtonConfig, ButtonDetectionDebugLevel.DETAILED);
-    
-    if (buttonDetection.isButton) {
-      console.log('Found button:', node.name, 'Score:', buttonDetection.score, 'Reasons:', buttonDetection.reasons);
-      // Evaluate the current node
-      const buttonStyle = determineButtonStyle(node);
-      console.log('Button style:', buttonStyle);
-      const styleIssues = evaluateButtonStyle(node, buttonStyle);
-      issues.push(...styleIssues);
-    } else if (buttonDetection.score > 0) {
-      console.log('Node almost qualified as button:', node.name, 'Score:', buttonDetection.score, 'Reasons:', buttonDetection.reasons);
-    }
+    detectButton(node, defaultButtonConfig, ButtonDetectionDebugLevel.DETAILED)
+      .then(buttonDetection => {
+        if (buttonDetection.isButton) {
+          console.log('Found button:', node.name, 'Score:', buttonDetection.score, 'Reasons:', buttonDetection.reasons);
+          // Evaluate the current node
+          const buttonStyle = determineButtonStyle(node);
+          console.log('Button style:', buttonStyle);
+          const styleIssues = evaluateButtonStyle(node, buttonStyle);
+          issues.push(...styleIssues);
+        } else if (buttonDetection.score > 0) {
+          console.log('Node almost qualified as button:', node.name, 'Score:', buttonDetection.score, 'Reasons:', buttonDetection.reasons);
+        }
+      })
+      .catch(error => {
+        console.error('Error in button detection:', error);
+      });
 
     // Recursively check children
     if ('children' in node) {

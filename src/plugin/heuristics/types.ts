@@ -27,42 +27,43 @@ export interface FigmaColor {
   a?: number;
 }
 
-// Color contrast specific fields
-export interface ColorContrastHeuristicResult extends HeuristicResult {
-  textColor?: string;
-  backgroundColor?: string;
-  contrastRatio?: number;
-  requiredRatio?: number;
-  hasMixedWeights?: boolean;
-  fontWeightSegments?: {
-    text: string;
-    weight: number;
-    fontSize: number;
-    position?: {
-      start: number;
-      end: number;
-    };
-  }[];
-  lowestWeight?: number;
-  highestWeight?: number;
+// Icon role type
+export type IconRole = 'interactive' | 'informative' | 'decorative';
+
+// Color analysis type
+export interface ColorAnalysisResult {
+  original: FigmaColor;
+  blended: FigmaColor;
+  fillOpacity: number;
+  layerOpacity: number;
+  contrastRatio: number;
 }
 
 // Icon contrast specific fields
 export interface IconContrastHeuristicResult extends HeuristicResult {
   type: 'icon_contrast';
   category: 'Accessibility';
-  role: 'interactive' | 'informative' | 'decorative';
-  colors: {
-    original: FigmaColor;
-    blended: FigmaColor;
-    effectiveOpacity: number;
-    contrastRatio: number;
-  }[];
+  role: IconRole;
+  colors: ColorAnalysisResult[];
   backgroundColor: FigmaColor;
   contrastRatio: number;
   requiredRatio: number;
   failingColors: FigmaColor[];
   isCompliant: boolean;
+}
+
+// Icon contrast result
+export interface IconContrastResult {
+  passed: boolean;
+  description: string;
+  severity: 'high' | 'medium' | 'low';
+  role: IconRole;
+  colors: ColorAnalysisResult[];
+  backgroundColor: FigmaColor;
+  contrastRatio: number;
+  requiredRatio: number;
+  nodeId: string;
+  nodeName: string;
 }
 
 // Configuration for icon detection

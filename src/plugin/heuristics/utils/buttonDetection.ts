@@ -1,4 +1,5 @@
 import { ButtonDetectionConfig, ButtonDetectionResult, ButtonDetectionDebugLevel } from '../config/buttonDetection';
+import { isIconNode } from '../iconDetection';
 
 export const BUTTON_CONTRAST_REQUIREMENTS = {
   outline: {
@@ -43,17 +44,25 @@ interface ButtonStyle {
   fillOpacity?: number;
 }
 
-export function detectButton(
+export async function detectButton(
   node: SceneNode,
   config: ButtonDetectionConfig,
   debugLevel: ButtonDetectionDebugLevel = ButtonDetectionDebugLevel.NONE
-): ButtonDetectionResult {
+): Promise<ButtonDetectionResult> {
   try {
     const result: ButtonDetectionResult = {
       isButton: false,
       score: 0,
       reasons: [],
     };
+
+    // First check if this is an icon - if so, it's not a button
+    if (await isIconNode(node)) {
+      if (debugLevel >= ButtonDetectionDebugLevel.BASIC) {
+        console.log('Node is an icon, skipping button detection:', node.name);
+      }
+      return result;
+    }
 
     if (debugLevel >= ButtonDetectionDebugLevel.DETAILED) {
       result.debugInfo = {
@@ -98,9 +107,9 @@ export function detectButton(
     result.isButton = result.score >= config.minScore;
 
     if (debugLevel >= ButtonDetectionDebugLevel.BASIC) {
-      console.log('Button detection for node:', node.name, {
-        score: result.score,
+      console.log('Button detection for node:', node.name, '►', {
         isButton: result.isButton,
+        score: result.score,
         reasons: result.reasons,
         debugInfo: result.debugInfo
       });
@@ -108,7 +117,7 @@ export function detectButton(
 
     return result;
   } catch (error) {
-    console.error('Error in button detection for node:', node.name, error);
+    console.error('Error in button detection:', error);
     return {
       isButton: false,
       score: 0,

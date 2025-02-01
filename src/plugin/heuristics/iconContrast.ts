@@ -1,16 +1,14 @@
-import { IconContrastHeuristicResult, FigmaColor } from './types';
+import { IconRole, IconContrastHeuristicResult, IconContrastResult, ColorAnalysisResult, FigmaColor } from './types';
 import { defaultConfig } from './config';
-import { isIconNode, isIconByName, isIconByType, isIconBySize, isIconByShape, isIconByContext, determineIconRole, calculateIconScore } from './iconDetection';
+import { isIconNode, isIconByName, isIconByType, isIconBySize, isIconByContext, determineIconRole, calculateIconScore } from './iconDetection';
 import { blendWithBackground, calculateContrastRatio } from './colorUtils';
 
 // Types
-type IconRole = 'interactive' | 'informative' | 'decorative';
 
 interface ColorWithOpacity {
   color: FigmaColor;
   fillOpacity: number;
   layerOpacity: number;
-  effectiveOpacity: number;
 }
 
 /**
@@ -25,7 +23,7 @@ interface ColorWithOpacity {
  * @property {string} description - Description of the heuristic result.
  * @property {'high' | 'medium' | 'low'} severity - Severity of the contrast issue.
  * @property {IconRole} role - Role of the icon (interactive, informative, decorative).
- * @property {Object[]} colors - Array of colors used in the icon with their contrast ratios.
+ * @property {ColorAnalysisResult[]} colors - Array of colors used in the icon with their contrast ratios.
  * @property {FigmaColor} backgroundColor - Background color used for contrast calculation.
  * @property {number} contrastRatio - Calculated contrast ratio of the icon.
  * @property {number} requiredRatio - Required contrast ratio based on the icon's role.
@@ -110,7 +108,6 @@ function findOpaqueBackground(node: SceneNode): ColorWithOpacity | null {
           color: result,
           fillOpacity: result.a,
           layerOpacity: 1,
-          effectiveOpacity: result.a
         };
       }
     }
@@ -127,7 +124,6 @@ function findOpaqueBackground(node: SceneNode): ColorWithOpacity | null {
         color: { ...background.color, a: opacity },
         fillOpacity: opacity,
         layerOpacity: 1,
-        effectiveOpacity: opacity
       };
     }
   }
@@ -137,85 +133,54 @@ function findOpaqueBackground(node: SceneNode): ColorWithOpacity | null {
     color: { r: 1, g: 1, b: 1, a: 1 },
     fillOpacity: 1,
     layerOpacity: 1,
-    effectiveOpacity: 1
   };
 }
 
+// Helper function to compute cumulative opacity from parent chain
+function getCumulativeOpacity(node: SceneNode | null): number {
+  if (!node) return 1;
+  // If node has an opacity property, use it; otherwise default to 1
+  const currentOpacity = 'opacity' in node ? (node.opacity ?? 1) : 1;
+  return currentOpacity * getCumulativeOpacity(node.parent as SceneNode | null);
+}
+
 // Extract colors from a node considering opacity
+function isSceneNode(node: any): node is SceneNode {
+  return node && typeof node === 'object' && 'opacity' in node;
+}
+
 function extractAllIconColors(node: SceneNode, parentOpacity: number = 1): ColorWithOpacity[] {
+  if (!node || !isSceneNode(node)) {
+    return [];
+  }
+
   const colors: ColorWithOpacity[] = [];
   
-  // Calculate effective opacity for this node
-  let nodeOpacity = 1;
-  
-  // Handle opacity based on node type
-  if ('opacity' in node && typeof node.opacity === 'number') {
-    nodeOpacity = node.opacity;
-  } else if ('visible' in node) {
-    nodeOpacity = node.visible ? 1 : 0;
-  }
-  
-  // Special handling for BOOLEAN_OPERATION and VECTOR nodes
-  if (node.type === 'BOOLEAN_OPERATION' || node.type === 'VECTOR') {
-    // For these nodes, we need to check the parent for opacity
-    const parent = node.parent;
-    if (parent && 'opacity' in parent && typeof parent.opacity === 'number') {
-      nodeOpacity = parent.opacity;
-    }
-  }
-  
-  // Ensure opacity is a number and clamp between 0 and 1
-  nodeOpacity = Math.max(0, Math.min(1, nodeOpacity));
-  
+  // Get the node's own opacity
+  const nodeOpacity = 'opacity' in node ? (node.opacity ?? 1) : 1;
   const effectiveParentOpacity = parentOpacity * nodeOpacity;
 
-  // Debug log
-  console.log('Node:', {
-    name: node.name,
-    type: node.type,
-    nodeOpacity,
-    parentOpacity,
-    effectiveParentOpacity,
-    parent: node.parent?.name,
-    parentType: node.parent?.type
-  });
-
-  // Handle fills
-  if ('fills' in node) {
-    const fills = Array.isArray(node.fills) ? node.fills : [];
-    for (const fill of fills) {
-      if (fill.type === 'SOLID' && fill.visible) {
-        const fillOpacity = typeof fill.opacity === 'number' ? Math.max(0, Math.min(1, fill.opacity)) : 1;
-        const effectiveOpacity = effectiveParentOpacity * fillOpacity;
-        
-        // Debug log
-        console.log('Fill:', {
-          type: fill.type,
-          visible: fill.visible,
-          opacity: fill.opacity,
+  // Process fills if they exist
+  if ('fills' in node && Array.isArray(node.fills)) {
+    node.fills.forEach(fill => {
+      if (fill?.type === 'SOLID' && fill.color && fill.visible !== false) {
+        const fillOpacity = fill.opacity ?? 1;
+        colors.push({
           color: fill.color,
           fillOpacity,
-          effectiveOpacity
-        });
-        
-        colors.push({
-          color: { 
-            ...fill.color,
-            a: 1 // Keep original alpha, handle opacity separately
-          },
-          fillOpacity,
-          layerOpacity: effectiveParentOpacity,
-          effectiveOpacity
+          layerOpacity: effectiveParentOpacity
         });
       }
-    }
+    });
   }
 
-  // Recursively process children with cascaded opacity
-  if ('children' in node) {
-    for (const child of node.children) {
-      colors.push(...extractAllIconColors(child, effectiveParentOpacity));
-    }
+  // Process children recursively
+  if ('children' in node && Array.isArray(node.children)) {
+    node.children.forEach(child => {
+      if (isSceneNode(child)) {
+        colors.push(...extractAllIconColors(child, effectiveParentOpacity));
+      }
+    });
   }
 
   return colors;
@@ -241,91 +206,84 @@ function generateIconRecommendations(contrastRatio: number, threshold: number, r
 }
 
 // Analyze a single node for icon contrast
-export function analyzeIconContrast(node: SceneNode, result: IconContrastHeuristicResult): IconContrastHeuristicResult | null {
+export function analyzeIconContrast(
+  node: SceneNode,
+  result: IconContrastHeuristicResult
+): IconContrastResult | null {
   try {
     // Find opaque background
     const background = findOpaqueBackground(node);
+    const defaultBackground: FigmaColor = { r: 1, g: 1, b: 1 };
+
+    // Return early if no background
     if (!background) {
-      result.recommendations.push('No opaque background found. Consider adding a background color.');
-      return result;
+      return {
+        passed: false,
+        description: 'No opaque background found.',
+        severity: 'medium',
+        role: result.role,
+        colors: [],
+        backgroundColor: defaultBackground,
+        contrastRatio: 0,
+        requiredRatio: 0,
+        nodeId: node.id,
+        nodeName: node.name
+      };
     }
 
-    // Extract icon colors with opacity
-    const iconColors = extractAllIconColors(node);
-    if (iconColors.length === 0) {
-      result.recommendations.push('No visible colors found in icon.');
-      return result;
-    }
+    // Compute cumulative opacity from parent chain
+    const initialOpacity = getCumulativeOpacity(node.parent as SceneNode | null);
 
-    // Debug log
-    console.log('Analyzing icon colors:', iconColors);
-    console.log('Background:', background);
+    // Extract all colors with their opacities, starting with the cumulative parent opacity
+    const iconColors = extractAllIconColors(node, initialOpacity);
+    const colorAnalysis: ColorAnalysisResult[] = [];
+    let lowestContrastRatio = Infinity;
 
-    // Calculate contrast for each color
-    const failingColors: FigmaColor[] = [];
-    const colors: { 
-      original: FigmaColor; 
-      blended: FigmaColor; 
-      effectiveOpacity: number; 
-      contrastRatio: number 
-    }[] = [];
-    let minContrastRatio = Infinity;
-
-    for (const { color, effectiveOpacity } of iconColors) {
-      // Debug log
-      console.log('Processing color:', color, 'with effectiveOpacity:', effectiveOpacity);
-
-      // Blend with background using effective opacity
-      const blendedColor = blendWithBackground(
-        color, // Original color without opacity
-        background.color,
-        effectiveOpacity // Use effective opacity for blending
-      );
-
-      // Debug log
-      console.log('Blended color:', blendedColor);
-
-      // Calculate contrast with background
+    // Analyze each color
+    for (const { color, fillOpacity, layerOpacity } of iconColors) {
+      // Calculate effective opacity
+      const effectiveOpacity = fillOpacity * layerOpacity;
+      
+      // Blend the color with background considering effective opacity
+      const blendedColor = blendWithBackground(color, background.color, effectiveOpacity);
+      
+      // Calculate contrast ratio with blended color
       const contrastRatio = calculateContrastRatio(blendedColor, background.color);
-
-      // Debug log
-      console.log('Contrast ratio:', contrastRatio);
-
-      colors.push({
+      
+      colorAnalysis.push({
         original: color,
         blended: blendedColor,
-        effectiveOpacity,
+        fillOpacity,
+        layerOpacity,
         contrastRatio
       });
 
-      if (contrastRatio < minContrastRatio) {
-        minContrastRatio = contrastRatio;
-      }
-
-      // Check if color fails contrast requirements
-      const requiredRatio = getRequiredContrastRatio(result.role);
-      if (contrastRatio < requiredRatio) {
-        failingColors.push(color);
+      // Track lowest contrast ratio
+      if (contrastRatio < lowestContrastRatio) {
+        lowestContrastRatio = contrastRatio;
       }
     }
 
-    // Update result
-    result.colors = colors;
-    result.backgroundColor = background.color;
-    result.contrastRatio = minContrastRatio;
-    result.requiredRatio = getRequiredContrastRatio(result.role);
-    result.isCompliant = failingColors.length === 0;
-    result.failingColors = failingColors;
+    // Get required ratio based on icon role
+    const requiredRatio = getRequiredContrastRatio(result.role);
+    const passed = lowestContrastRatio >= requiredRatio;
+    const severity = calculateSeverity(lowestContrastRatio, requiredRatio);
+    const description = passed
+      ? `Icon meets contrast requirements with ratio ${lowestContrastRatio.toFixed(2)}:1`
+      : `Icon fails contrast requirements. Current: ${lowestContrastRatio.toFixed(2)}:1, Required: ${requiredRatio}:1`;
 
-    // Calculate severity based on the worst contrast ratio
-    result.severity = calculateSeverity(minContrastRatio, result.requiredRatio);
-
-    // Generate recommendations
-    if (!result.isCompliant) {
-      result.recommendations = generateIconRecommendations(minContrastRatio, result.requiredRatio, result.role);
-    }
-
-    return result;
+    return {
+      passed,
+      description,
+      severity,
+      role: result.role,
+      colors: colorAnalysis,
+      backgroundColor: background.color,
+      contrastRatio: lowestContrastRatio,
+      requiredRatio,
+      nodeId: node.id,
+      nodeName: node.name
+    };
   } catch (error) {
     console.error('Error analyzing icon contrast:', error);
     return null;
@@ -344,19 +302,16 @@ function getRequiredContrastRatio(role: 'interactive' | 'informative' | 'decorat
 }
 
 // Main analysis function
-export function evaluateIconContrast(node: SceneNode): IconContrastHeuristicResult[] {
-  const results: IconContrastHeuristicResult[] = [];
+export function evaluateIconContrast(node: SceneNode): IconContrastResult[] {
+  const results: IconContrastResult[] = [];
   traverseNodesForIcons(node, results);
   
-  // Filter out passing results
-  return results.filter(result => {
-    const requiredRatio = getRequiredContrastRatio(result.role);
-    return result.contrastRatio < requiredRatio;
-  });
+  // Return all results, including passing ones
+  return results;
 }
 
 // Recursive traversal function
-function traverseNodesForIcons(node: SceneNode, results: IconContrastHeuristicResult[]) {
+function traverseNodesForIcons(node: SceneNode, results: IconContrastResult[]) {
   try {
     // Skip hidden nodes and invalid nodes
     if (!node || ('visible' in node && node.visible === false)) {
@@ -369,7 +324,7 @@ function traverseNodesForIcons(node: SceneNode, results: IconContrastHeuristicRe
     }
 
     // Calculate icon score first
-    const iconScore = calculateIconScore(node, defaultConfig);
+    const iconScore = calculateIconScore(node);
     
     // Check if current node is an icon
     if ('fills' in node && 
@@ -397,11 +352,7 @@ function traverseNodesForIcons(node: SceneNode, results: IconContrastHeuristicRe
         });
         
         if (result) {
-          // Only add the result if it fails the contrast check
-          const requiredRatio = getRequiredContrastRatio(result.role);
-          if (result.contrastRatio < requiredRatio) {
-            results.push(result);
-          }
+          results.push(result);
         }
       } catch (error) {
         console.error('Error analyzing icon contrast:', node.name, error);
@@ -495,7 +446,6 @@ export {
   isIconByName,
   isIconByType,
   isIconBySize,
-  isIconByShape,
   isIconByContext,
   determineIconRole,
   generateIconRecommendations
