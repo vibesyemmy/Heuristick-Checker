@@ -39,7 +39,7 @@ export function getEffectiveOpacity(node: BaseNode & { opacity?: number }, fill?
  * @param node - The node to check
  * @returns boolean indicating if the node is a button
  */
-export function isInteractiveComponent(node: SceneNode): boolean {
+export async function isInteractiveComponent(node: SceneNode): Promise<boolean> {
   const nodeName = node.name.toLowerCase();
   const interactiveKeywords = ['button', 'link', 'input', 'tab', 'toggle', 'checkbox', 'radio'];
   
@@ -50,8 +50,15 @@ export function isInteractiveComponent(node: SceneNode): boolean {
   
   // Check if it's an instance of an interactive component
   if (node.type === 'INSTANCE') {
-    const mainComponentName = node.mainComponent?.name.toLowerCase() || '';
-    return interactiveKeywords.some(keyword => mainComponentName.includes(keyword));
+    try {
+      const mainComponent = await node.getMainComponentAsync();
+      if (mainComponent) {
+        const mainComponentName = mainComponent.name.toLowerCase();
+        return interactiveKeywords.some(keyword => mainComponentName.includes(keyword));
+      }
+    } catch (error) {
+      console.error('Error getting main component:', error);
+    }
   }
   
   return false;

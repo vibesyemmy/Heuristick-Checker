@@ -12,14 +12,13 @@ export interface ButtonDetectionConfig {
 }
 
 export const defaultButtonConfig: ButtonDetectionConfig = {
-  minScore: 7, // Increased from 5 to require more evidence
+  minScore: 12, // Increased significantly to prevent false positives
   namingPatterns: [
-    '^button',
-    '^btn[^-]',
-    'button$',
-    '^cta$',
-    'submit$',
-    'toggle$'
+    '^button[\\s/]',  // Must start with "button" followed by space or slash
+    '^btn[\\s/]',     // Must start with "btn" followed by space or slash
+    '/button$',       // Must end with "button" preceded by slash (component path)
+    '^cta[\\s/]',     // Must start with "cta" followed by space or slash
+    'submit$'         // Must end with "submit"
   ],
   commonActionWords: [
     'submit',
@@ -40,17 +39,15 @@ export const defaultButtonConfig: ButtonDetectionConfig = {
     'sign up',
     'login',
     'logout',
-    'register',
-    'get started',
-    'learn more',
+    'register'
   ],
   dimensionRanges: {
-    minHeight: 32, // Increased from 24 to better distinguish from icons
-    maxHeight: 60,
-    minWidth: 80,  // Increased from 60 to better distinguish from icons
-    maxWidth: 300,
+    minHeight: 32,
+    maxHeight: 56,
+    minWidth: 80,
+    maxWidth: 280
   },
-  commonRadii: [0, 4, 8, 12, 16, 20, 24, 32, 9999], // 9999 for fully rounded
+  commonRadii: [4, 6, 8, 12, 16, 20, 24, 28, 32]
 };
 
 // Debug levels for button detection

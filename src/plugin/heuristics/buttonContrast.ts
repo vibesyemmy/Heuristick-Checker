@@ -601,13 +601,13 @@ function evaluateButtonStyle(node: SceneNode, buttonStyle: ButtonStyle): ButtonC
       });
       
       const strokeContrastRatio = calculateContrastRatio(
-        strokeColorHex,
-        containerBackgroundHex
+        buttonStyle.strokeColor,
+        containerBackground
       );
       
       const fillContrastRatio = calculateContrastRatio(
-        fillColorHex,
-        containerBackgroundHex
+        buttonStyle.backgroundColor,
+        containerBackground
       );
 
       if (strokeContrastRatio < BUTTON_CONTRAST_REQUIREMENTS.outline.stroke.minimum ||
@@ -638,8 +638,8 @@ function evaluateButtonStyle(node: SceneNode, buttonStyle: ButtonStyle): ButtonC
       });
       
       const strokeContrastRatio = calculateContrastRatio(
-        strokeColorHex,
-        containerBackgroundHex
+        buttonStyle.strokeColor,
+        containerBackground
       );
       
       if (strokeContrastRatio < BUTTON_CONTRAST_REQUIREMENTS.outline.stroke.minimum) {
@@ -669,8 +669,8 @@ function evaluateButtonStyle(node: SceneNode, buttonStyle: ButtonStyle): ButtonC
       });
       
       const fillContrastRatio = calculateContrastRatio(
-        fillColorHex,
-        containerBackgroundHex
+        buttonStyle.backgroundColor,
+        containerBackground
       );
       
       if (fillContrastRatio < BUTTON_CONTRAST_REQUIREMENTS.boundary.minimum) {

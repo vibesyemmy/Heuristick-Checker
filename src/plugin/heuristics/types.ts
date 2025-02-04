@@ -4,7 +4,7 @@ export interface Heuristic {
   id: string;
   name: string;
   description: string;
-  check: (node: SceneNode) => Promise<HeuristicResult[]>;
+  check: (node: globalThis.SceneNode) => Promise<HeuristicResult[]>;
 }
 
 export interface HeuristicResult {
@@ -86,7 +86,7 @@ export interface IconDetectionConfig {
 }
 
 // Type for a heuristic check function
-export type HeuristicCheck = (node: SceneNode) => Promise<HeuristicResult | HeuristicResult[] | null>;
+export type HeuristicCheck = (node: globalThis.SceneNode) => Promise<HeuristicResult | HeuristicResult[] | null>;
 
 export interface HeuristicDefinition {
   id: string;

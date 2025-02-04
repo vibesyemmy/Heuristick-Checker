@@ -137,7 +137,7 @@ function findOpaqueBackground(node: SceneNode): ColorWithOpacity | null {
 }
 
 // Helper function to compute cumulative opacity from parent chain
-function getCumulativeOpacity(node: SceneNode | null): number {
+export function getCumulativeOpacity(node: SceneNode | null): number {
   if (!node) return 1;
   // If node has an opacity property, use it; otherwise default to 1
   const currentOpacity = 'opacity' in node ? (node.opacity ?? 1) : 1;
@@ -306,8 +306,8 @@ export function evaluateIconContrast(node: SceneNode): IconContrastResult[] {
   const results: IconContrastResult[] = [];
   traverseNodesForIcons(node, results);
   
-  // Return all results, including passing ones
-  return results;
+  // Only return results that failed the contrast check
+  return results.filter(result => !result.passed);
 }
 
 // Recursive traversal function

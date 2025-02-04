@@ -1,4 +1,5 @@
 import Color from 'color';
+import { getCumulativeOpacity } from './iconContrast';
 
 export interface ContrastIssue {
   nodeId: string;
@@ -97,9 +98,9 @@ export function convertFigmaColorToHex(color: ColorWithOpacity, background?: Col
   ).hex();
 }
 
-export function calculateContrastRatio(color1: string, color2: string): number {
-  const c1 = Color(color1);
-  const c2 = Color(color2);
+export function calculateContrastRatio(color1: ColorWithOpacity, color2: ColorWithOpacity): number {
+  const c1 = Color(convertFigmaColorToHex(color1));
+  const c2 = Color(convertFigmaColorToHex(color2));
   
   const l1 = c1.luminosity();
   const l2 = c2.luminosity();
@@ -413,19 +414,21 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
       const backgroundFill = findOpaqueBackground(node);
 
       if (textFill && backgroundFill) {
-        const effectiveOpacity = textFill.layerOpacity * textFill.fillOpacity * (textFill.color.a ?? 1);
+        const ownOpacity = 'opacity' in node ? (node.opacity ?? 1) : 1;
+        const parentOpacity = getCumulativeOpacity(node.parent as SceneNode | null);
+        const effectiveOpacity = ownOpacity * textFill.layerOpacity * textFill.fillOpacity * (textFill.color.a ?? 1) * parentOpacity;
         
-        const originalTextHex = convertFigmaColorToHex(textFill);
+        const blendedTextColor = blendWithBackground(textFill.color, backgroundFill.color, effectiveOpacity);
+        
+        const originalTextHex = convertFigmaColorToHex({ color: blendedTextColor, fillOpacity: 1, layerOpacity: 1 });
         const backgroundHex = convertFigmaColorToHex(backgroundFill);
-        
-        const blendedTextHex = convertFigmaColorToHex(textFill, backgroundFill);
+        const contrastRatio = calculateContrastRatio({ color: blendedTextColor, fillOpacity: 1, layerOpacity: 1 }, backgroundFill);
         
         const fontWeights = analyzeFontWeights(node);
         const fontSize = node.fontSize as number || 14;
         // Use lowest weight for most conservative calculation
         const isBold = fontWeights.lowestWeight >= 700;
         
-        const contrastRatio = calculateContrastRatio(blendedTextHex, backgroundHex);
         const requiredRatio = getRequiredContrast(fontSize, isBold);
         const isCompliant = contrastRatio >= requiredRatio;
 
@@ -437,7 +440,7 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
             nodeName: node.name,
             textColor: originalTextHex,
             backgroundColor: backgroundHex,
-            blendedTextColor: blendedTextHex,
+            blendedTextColor: originalTextHex,
             fontSize,
             isBold,
             contrastRatio,
@@ -459,7 +462,7 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
             requiredRatio,
             originalTextHex,
             backgroundHex,
-            blendedTextHex,
+            originalTextHex,
             effectiveOpacity,
             fontWeights.hasMixedWeights,
             fontWeights.segments,
@@ -486,4 +489,12 @@ export function evaluateTextContrast(node: SceneNode): ContrastIssue[] {
 function getRequiredContrast(fontSize: number, isBold: boolean): number {
   const largeText = fontSize >= 18 || (fontSize >= 14 && isBold);
   return largeText ? 3 : 4.5;
+}
+
+function blendWithBackground(foreground: FigmaColor, background: FigmaColor, alpha: number): FigmaColor {
+  return {
+    r: alpha * foreground.r + (1 - alpha) * background.r,
+    g: alpha * foreground.g + (1 - alpha) * background.g,
+    b: alpha * foreground.b + (1 - alpha) * background.b
+  };
 }
