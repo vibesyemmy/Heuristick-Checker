@@ -1,7 +1,6 @@
 import { evaluateButtonContrast } from './buttonContrast';
 import { evaluateTextContrast } from './contrast';
 import { evaluateIconContrast } from './iconContrast';
-import { evaluateStateContrast, StateContrastResult, StateContrastIssue } from './stateContrast';
 import { BUTTON_CONTRAST_REQUIREMENTS } from './utils/buttonDetection';
 import { HeuristicResult, Heuristic } from './types';
 
@@ -64,26 +63,6 @@ export const heuristics: Heuristic[] = [
             : 'Button contrast could not be determined',
         severity: 'medium',
         recommendations: []
-      }));
-    }
-  },
-  {
-    id: 'state-contrast',
-    name: 'State Contrast',
-    description: 'Checks if interactive elements have sufficient contrast between different states (hover, focus, pressed, disabled)',
-    check: async (node: globalThis.SceneNode): Promise<HeuristicResult[]> => {
-      const results = await evaluateStateContrast(node);
-      return results.map((result: StateContrastResult) => ({
-        id: `state-contrast-${result.nodeId}`,
-        nodeId: result.nodeId,
-        nodeName: result.nodeName,
-        type: 'state-contrast',
-        category: 'Interactive States',
-        title: 'State Contrast Issue',
-        description: `${result.nodeName} has state contrast issues`,
-        severity: result.issues.some((i: StateContrastIssue) => i.severity === 'high') ? 'high' : 
-                 result.issues.some((i: StateContrastIssue) => i.severity === 'medium') ? 'medium' : 'low',
-        recommendations: result.issues.map((issue: StateContrastIssue) => issue.recommendation)
       }));
     }
   }
