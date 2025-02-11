@@ -2,7 +2,7 @@ import { ContrastIssue, ColorWithOpacity, findOpaqueBackground, calculateContras
 import { getNodeFillOpacity, getNodeLayerOpacity } from './utils';
 import Color from 'color';
 import { defaultButtonConfig } from './config/buttonDetection';
-import { detectButton } from './utils/buttonDetection';
+import { detectInteractiveElement, InteractiveElementType } from './utils/interactiveElementDetection';
 import { ButtonDetectionDebugLevel } from './config/buttonDetection';
 
 interface ButtonContrastIssue {
@@ -536,42 +536,133 @@ function isButtonComponent(node: SceneNode): boolean {
   return false;
 }
 
-export function evaluateButtonContrast(node: SceneNode): ButtonContrastIssue[] {
+export async function evaluateButtonContrast(node: SceneNode): Promise<ButtonContrastIssue[]> {
   const issues: ButtonContrastIssue[] = [];
   console.log('Starting button contrast evaluation for node:', node.name);
-  traverseNodesForButtons(node, issues);
-  console.log('Found button issues:', issues.length);
-  return issues;
+  
+  // First traverse and collect all issues
+  await traverseNodesForButtons(node, issues);
+  
+  // Group and filter issues by their top-level parent
+  const filteredIssues = filterButtonIssues(issues);
+  
+  console.log('Found', issues.length, 'total issues,', filteredIssues.length, 'after parent grouping');
+  console.log('Top-level components with issues:', 
+    filteredIssues.map(issue => issue.nodeName).join(', '));
+  
+  return filteredIssues;
 }
 
-function traverseNodesForButtons(node: SceneNode, issues: ButtonContrastIssue[]) {
+// Track analyzed components to avoid duplicates
+const analyzedComponents = new Set<string>();
+
+function isTopLevelComponent(node: SceneNode): boolean {
+  // Check if this is a component or instance
+  if (node.type !== 'COMPONENT' && node.type !== 'INSTANCE') {
+    return false;
+  }
+
+  // Check parent chain for other components
+  let parent = node.parent;
+  while (parent) {
+    if (parent.type === 'COMPONENT' || parent.type === 'INSTANCE') {
+      return false; // Found a parent component, so this is not top-level
+    }
+    parent = parent.parent;
+  }
+  return true;
+}
+
+function isSceneNode(node: BaseNode): node is SceneNode {
+  return 'type' in node && 
+         (node.type === 'FRAME' || 
+          node.type === 'COMPONENT' || 
+          node.type === 'INSTANCE' || 
+          node.type === 'GROUP' || 
+          node.type === 'RECTANGLE' || 
+          node.type === 'TEXT');
+}
+
+function getTopLevelParent(node: SceneNode): SceneNode {
+  let current = node;
+  
+  // Traverse upward until we find a component or instance that's directly under a frame or page
+  while (current.parent) {
+    const parent = current.parent;
+    
+    // Stop if we hit a page or frame
+    if (parent.type === 'PAGE' || parent.type === 'FRAME') {
+      break;
+    }
+    
+    // If we hit a component/instance that's meant to be the parent, stop here
+    if ((current.type === 'COMPONENT' || current.type === 'INSTANCE') && 
+        current.name.toLowerCase().includes('button')) {
+      break;
+    }
+    
+    // Only continue up if parent is a valid scene node
+    if (isSceneNode(parent)) {
+      current = parent;
+    } else {
+      break;
+    }
+  }
+  
+  return current;
+}
+
+function filterButtonIssues(issues: ButtonContrastIssue[]): ButtonContrastIssue[] {
+  // Group results by top-level parent ID
+  const groupedResults: { [parentId: string]: ButtonContrastIssue } = {};
+  
+  issues.forEach(issue => {
+    const node = figma.getNodeById(issue.nodeId);
+    if (!node || !isSceneNode(node)) return;
+    
+    const topParent = getTopLevelParent(node);
+    console.log(`Node: ${node.name}, Top Parent: ${topParent.name}`);
+    
+    // If we haven't seen this parent yet, or if this is the parent itself, add/update the result
+    if (!groupedResults[topParent.id] || node.id === topParent.id) {
+      groupedResults[topParent.id] = issue;
+    }
+  });
+  
+  return Object.values(groupedResults);
+}
+
+async function traverseNodesForButtons(node: SceneNode, issues: ButtonContrastIssue[]) {
   try {
-    // Check if current node is a button
-    detectButton(node, defaultButtonConfig, ButtonDetectionDebugLevel.DETAILED)
-      .then(buttonDetection => {
-        if (buttonDetection.isButton) {
-          console.log('Found button:', node.name, 'Score:', buttonDetection.score, 'Reasons:', buttonDetection.reasons);
-          // Evaluate the current node
-          const buttonStyle = determineButtonStyle(node);
-          console.log('Button style:', buttonStyle);
-          const styleIssues = evaluateButtonStyle(node, buttonStyle);
-          issues.push(...styleIssues);
-        } else if (buttonDetection.score > 0) {
-          console.log('Node almost qualified as button:', node.name, 'Score:', buttonDetection.score, 'Reasons:', buttonDetection.reasons);
-        }
-      })
-      .catch(error => {
-        console.error('Error in button detection:', error);
-      });
+    // Skip if we've already analyzed this component
+    if (analyzedComponents.has(node.id)) {
+      return;
+    }
+
+    // Check if current node is an interactive element
+    const detection = await detectInteractiveElement(node, defaultButtonConfig);
+    if (detection.type === InteractiveElementType.BUTTON) {
+      console.log('Found button:', node.name, 'Score:', detection.score, 'Reasons:', detection.reasons);
+      // Mark as analyzed
+      analyzedComponents.add(node.id);
+      
+      // Evaluate the current node
+      const buttonStyle = determineButtonStyle(node);
+      if (buttonStyle) {
+        console.log('Button style:', buttonStyle);
+        const styleIssues = evaluateButtonStyle(node, buttonStyle);
+        issues.push(...styleIssues);
+      }
+    }
 
     // Recursively check children
     if ('children' in node) {
       for (const child of node.children) {
-        traverseNodesForButtons(child, issues);
+        await traverseNodesForButtons(child, issues);
       }
     }
   } catch (error) {
-    console.error('Error evaluating node:', node.name, error);
+    console.error('Error in traverseNodesForButtons:', error);
   }
 }
 

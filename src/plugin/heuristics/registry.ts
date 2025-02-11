@@ -48,7 +48,7 @@ export const heuristics: Heuristic[] = [
     name: 'Button Contrast',
     description: 'Checks if buttons have sufficient contrast with their background',
     check: async (node: globalThis.SceneNode): Promise<HeuristicResult[]> => {
-      const issues = evaluateButtonContrast(node);
+      const issues = await evaluateButtonContrast(node);
       return issues.map(issue => ({
         id: `button-contrast-${issue.nodeId}`,
         nodeId: issue.nodeId,
