@@ -3,9 +3,9 @@
  */
 
 export type TextRole = 'heading' | 'body' | 'button' | 'label' | 'link' | 'list' | 'navigation';
-export type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED';
+export type BreakpointKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
 
-export type BreakpointKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+export type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED';
 
 export interface Breakpoint {
   minWidth?: number;
@@ -105,23 +105,36 @@ export interface ValidationResult {
   richTextAnalysis?: RichTextAnalysis;
 }
 
+
+
 export interface RichTextAnalysis {
   segments: {
     text: string;
     style: {
-      fontFamily: string;
+      fontFamily: string | 'mixed';
       fontSize: number;
-      fontWeight: string;
+      fontWeight: string | 'mixed';
       lineHeight?: number;
       letterSpacing?: number;
     };
     start: number;
     end: number;
   }[];
+  characters: string;
+  style: {
+    fontFamily: string | 'mixed';
+    fontSize: number;
+    fontWeight: string | 'mixed';
+    lineHeight?: number;
+    letterSpacing?: number;
+  };
   hasMultipleFonts: boolean;
   hasMultipleSizes: boolean;
   hasMultipleWeights: boolean;
   styleOverrides: StyleOverride[];
+  issues: TypographyIssue[];
+  start: number;
+  end: number;
 }
 
 // Configuration for text role detection

@@ -24,6 +24,12 @@ import { TextRoleAnalyzer } from './analysis';
 import { defaultTypographyConfig } from './config';
 
 export class TypographyValidator {
+  // Expose protected methods for testing
+  public __testing = {
+    getMainFrameWidth: (node: TextNodeWithStyle) => this.getMainFrameWidth(node),
+    getBreakpointKey: (frameWidth: number) => this.getBreakpointKey(frameWidth),
+    getRoleAnalyzer: () => this.roleAnalyzer
+  };
   private config: TypographyConfig;
   protected roleAnalyzer: TextRoleAnalyzer;
   private fontCache: Set<string> = new Set();
@@ -56,25 +62,29 @@ export class TypographyValidator {
       start: segment.start,
       end: segment.end,
       style: {
-        fontFamily: segment.fontName.family,
-        fontSize: segment.fontSize,
-        fontWeight: segment.fontName.style,
-        lineHeight: segment.lineHeight && typeof segment.lineHeight === 'object' && 'value' in segment.lineHeight ? segment.lineHeight.value : undefined,
-        letterSpacing: segment.letterSpacing && typeof segment.letterSpacing === 'object' && 'value' in segment.letterSpacing ? segment.letterSpacing.value : undefined
+        fontFamily: isMixed(segment.fontName) ? 'mixed' : segment.fontName.family,
+        fontSize: isMixed(segment.fontSize) ? 0 : segment.fontSize,
+        fontWeight: isMixed(segment.fontName) ? 'mixed' : segment.fontName.style,
+        lineHeight: isMixed(segment.lineHeight) ? undefined : normalizeLineHeight(segment.lineHeight, isMixed(segment.fontSize) ? undefined : segment.fontSize).value,
+        letterSpacing: isMixed(segment.letterSpacing) ? undefined : normalizeLetterSpacing(segment.letterSpacing)
       }
     }));
 
     // Check for style variations
-    const hasMultipleFonts = new Set(processedSegments.map(s => s.style.fontFamily)).size > 1;
-    const hasMultipleSizes = new Set(processedSegments.map(s => s.style.fontSize)).size > 1;
-    const hasMultipleWeights = new Set(processedSegments.map(s => s.style.fontWeight)).size > 1;
+    const fonts = new Set(processedSegments.map(s => s.style.fontFamily));
+    const sizes = new Set(processedSegments.map(s => s.style.fontSize));
+    const weights = new Set(processedSegments.map(s => s.style.fontWeight));
+
+    const hasMultipleFonts = fonts.size > 1;
+    const hasMultipleSizes = sizes.size > 1;
+    const hasMultipleWeights = weights.size > 1;
 
     // Get base style from first segment
     const baseStyle = processedSegments[0].style;
 
     return {
       segments: processedSegments,
-      text: node.characters,
+      characters: node.characters,
       style: baseStyle,
       hasMultipleFonts,
       hasMultipleSizes,
@@ -461,22 +471,54 @@ export class TypographyValidator {
    */
   private validateFontFamily(
     node: TextNodeWithStyle, 
-    requirements: any, 
+    requirements: { fontFamilies?: { primary: string[]; secondary: string[]; allowed: string[] } }, 
     issues: TypographyIssue[]
   ) {
-    if (isMixed(node.fontName)) return; // Skip mixed fonts, handled by rich text analysis
+    if (isMixed(node.fontName)) {
+      // Handle mixed fonts through rich text analysis
+      const analysis = this.analyzeRichText(node);
+      if (analysis) {
+        const uniqueFonts = new Set(analysis.segments.map(s => s.style.fontFamily));
+        if (uniqueFonts.size > 1) {
+          issues.push({
+            type: 'Mixed Styles',
+            message: 'Mixed font families detected',
+            severity: 'warning',
+            code: 'TYPOGRAPHY_MIXED_FONTS',
+            node,
+            expected: 'Consistent font family',
+            actual: Array.from(uniqueFonts).join(', '),
+            suggestion: 'Use consistent font families within text blocks'
+          });
+        }
+      }
+      return;
+    }
 
     const fontFamily = node.fontName.family;
-    if (!this.config.fontFamilies.allowed.includes(fontFamily)) {
+    const allowedFonts = requirements.fontFamilies?.allowed || this.config.fontFamilies.allowed;
+
+    if (!allowedFonts.includes(fontFamily)) {
+      const primaryFonts = requirements.fontFamilies?.primary || this.config.fontFamilies.primary;
+      const secondaryFonts = requirements.fontFamilies?.secondary || this.config.fontFamilies.secondary;
+
+      let suggestion = `Use one of the approved fonts: ${allowedFonts.join(', ')}`;
+      if (primaryFonts.length > 0) {
+        suggestion += `\nPrimary fonts: ${primaryFonts.join(', ')}`;
+      }
+      if (secondaryFonts.length > 0) {
+        suggestion += `\nSecondary fonts: ${secondaryFonts.join(', ')}`;
+      }
+
       issues.push({
         type: 'Invalid Font',
-        message: `Font "${fontFamily}" is not in the approved list`,
-        severity: 'error',
+        message: `Font family "${fontFamily}" is not in the approved list`,
+        severity: 'warning',
         code: 'TYPOGRAPHY_INVALID_FONT',
         node,
-        expected: this.config.fontFamilies.primary.join(', '),
+        expected: allowedFonts.join(', '),
         actual: fontFamily,
-        suggestion: `Use one of the approved fonts: ${this.config.fontFamilies.primary.join(', ')}`
+        suggestion
       });
     }
   }
@@ -497,7 +539,7 @@ export class TypographyValidator {
     const breakpointKeys: BreakpointKey[] = ['xs', 'sm', 'md', 'lg', 'xl'];
 
     // Handle special case for xs
-    if (frameWidth <= breakpoints.xs.maxWidth) {
+    if (frameWidth <= (breakpoints.xs?.maxWidth ?? 375)) {
       return 'xs';
     }
 
@@ -581,31 +623,41 @@ export class TypographyValidator {
 
   private validateFontSize(
     node: TextNodeWithStyle, 
-    requirements: any, 
+    requirements: { fontSize?: number[]; styleKey?: string }, 
     issues: TypographyIssue[]
   ) {
-    console.log('Debug - validateFontSize:', {
-      nodeName: node.name,
-      fontSize: node.fontSize,
-      requirements
-    });
-
-    if (isMixed(node.fontSize)) return; // Skip mixed sizes, handled by rich text analysis
+    if (isMixed(node.fontSize)) {
+      // Handle mixed sizes through rich text analysis
+      const analysis = this.analyzeRichText(node);
+      if (analysis) {
+        const uniqueSizes = new Set(analysis.segments.map(s => s.style.fontSize));
+        if (uniqueSizes.size > 1) {
+          issues.push({
+            type: 'Mixed Styles',
+            message: 'Mixed font sizes detected',
+            severity: 'warning',
+            code: 'TYPOGRAPHY_MIXED_SIZES',
+            node,
+            expected: 'Consistent font size',
+            actual: Array.from(uniqueSizes).join(', '),
+            suggestion: 'Use consistent font sizes within text blocks'
+          });
+        }
+      }
+      return;
+    }
 
     const fontSize = node.fontSize;
     // Get the main frame width
     const frameWidth = this.getMainFrameWidth(node);
 
     // Get responsive scale for this style
-    const responsiveScale = this.getResponsiveScale(frameWidth, requirements.styleKey);
-    const allowedSizes = responsiveScale.length > 0 ? responsiveScale : requirements.fontSize;
+    const responsiveScale = requirements.styleKey ? 
+      this.getResponsiveScale(frameWidth, requirements.styleKey) : 
+      [];
+    const allowedSizes = responsiveScale.length > 0 ? responsiveScale : (requirements.fontSize || []);
 
-    // For component scales, treat as a range. For type scales, expect exact match
-    console.log('Debug - validateFontSize:', {
-      fontSize,
-      allowedSizes,
-      requirements
-    });
+    if (allowedSizes.length === 0) return; // Skip if no size requirements
 
     // Special handling for titles - treat as range [24, 32]
     const isTitleNode = node.name?.toLowerCase().includes('title');
@@ -619,13 +671,7 @@ export class TypographyValidator {
         // Type scale - expect exact match
         allowedSizes.includes(fontSize);
 
-    console.log('Debug - validation:', {
-      isTitleNode,
-      isValidSize,
-      fontSize
-    });
-
-    if (requirements && !isValidSize) {
+    if (!isValidSize) {
       // Special handling for titles
       if (isTitleNode) {
         issues.push({
@@ -672,22 +718,43 @@ export class TypographyValidator {
    */
   private validateFontWeight(
     node: TextNodeWithStyle, 
-    requirements: any, 
+    requirements: { fontWeight?: string[] }, 
     issues: TypographyIssue[]
   ) {
-    if (isMixed(node.fontName)) return; // Skip mixed weights, handled by rich text analysis
+    if (isMixed(node.fontName)) {
+      // Handle mixed weights through rich text analysis
+      const analysis = this.analyzeRichText(node);
+      if (analysis) {
+        const uniqueWeights = new Set(analysis.segments.map(s => s.style.fontWeight));
+        if (uniqueWeights.size > 1) {
+          issues.push({
+            type: 'Mixed Styles',
+            message: 'Mixed font weights detected',
+            severity: 'warning',
+            code: 'TYPOGRAPHY_MIXED_WEIGHTS',
+            node,
+            expected: 'Consistent font weight',
+            actual: Array.from(uniqueWeights).join(', '),
+            suggestion: 'Use consistent font weights within text blocks'
+          });
+        }
+      }
+      return;
+    }
 
     const fontWeight = node.fontName.style;
-    if (requirements && !requirements.fontWeight.includes(fontWeight)) {
+    const validWeights = requirements.fontWeight || ['Regular', 'Medium', 'Bold'];
+
+    if (!validWeights.includes(fontWeight)) {
       issues.push({
         type: 'Invalid Font Weight',
         message: `Font weight "${fontWeight}" is not recommended`,
         severity: 'warning',
         code: 'TYPOGRAPHY_INVALID_WEIGHT',
         node,
-        expected: requirements.fontWeight.join(', '),
+        expected: validWeights.join(', '),
         actual: fontWeight,
-        suggestion: `Use one of the recommended weights: ${requirements.fontWeight.join(', ')}`
+        suggestion: `Use one of the recommended weights: ${validWeights.join(', ')}`
       });
     }
   }
@@ -697,10 +764,31 @@ export class TypographyValidator {
    */
   private validateLineHeight(
     node: TextNodeWithStyle, 
-    requirements: any, 
+    requirements: { lineHeight?: { min: number; max: number } }, 
     issues: TypographyIssue[]
   ) {
-    if (isMixed(node.lineHeight) || isMixed(node.fontSize)) return; // Skip mixed values
+    if (isMixed(node.lineHeight) || isMixed(node.fontSize)) {
+      // Handle mixed line heights through rich text analysis
+      const analysis = this.analyzeRichText(node);
+      if (analysis) {
+        const uniqueLineHeights = new Set(analysis.segments.map(s => s.style.lineHeight));
+        if (uniqueLineHeights.size > 1) {
+          issues.push({
+            type: 'Mixed Styles',
+            message: 'Mixed line heights detected',
+            severity: 'warning',
+            code: 'TYPOGRAPHY_MIXED_LINE_HEIGHTS',
+            node,
+            expected: 'Consistent line height',
+            actual: Array.from(uniqueLineHeights).join(', '),
+            suggestion: 'Use consistent line heights within text blocks'
+          });
+        }
+      }
+      return;
+    }
+
+    if (!requirements?.lineHeight) return; // Skip if no requirements
 
     const fontSize = node.fontSize;
     const normalizedLineHeight = normalizeLineHeight(node.lineHeight, fontSize);
@@ -725,7 +813,7 @@ export class TypographyValidator {
       actualHeight = roundToEven(normalizedLineHeight.value * 10) / 10;
     }
 
-    if (requirements && (actualHeight < minHeight || actualHeight > maxHeight)) {
+    if (actualHeight < minHeight || actualHeight > maxHeight) {
       const unit = normalizedLineHeight.unit === 'PIXELS' ? 'px' : '';
       issues.push({
         type: 'Invalid Line Height',
@@ -745,25 +833,45 @@ export class TypographyValidator {
    */
   private validateLetterSpacing(
     node: TextNodeWithStyle, 
-    requirements: any, 
+    requirements: { letterSpacing?: { min: number; max: number } }, 
     issues: TypographyIssue[]
   ) {
-    if (isMixed(node.letterSpacing)) return; // Skip mixed letter spacing
+    if (isMixed(node.letterSpacing)) {
+      // Handle mixed letter spacing through rich text analysis
+      const analysis = this.analyzeRichText(node);
+      if (analysis) {
+        const uniqueSpacings = new Set(analysis.segments.map(s => s.style.letterSpacing));
+        if (uniqueSpacings.size > 1) {
+          issues.push({
+            type: 'Mixed Styles',
+            message: 'Mixed letter spacing detected',
+            severity: 'warning',
+            code: 'TYPOGRAPHY_MIXED_LETTER_SPACING',
+            node,
+            expected: 'Consistent letter spacing',
+            actual: Array.from(uniqueSpacings).join(', '),
+            suggestion: 'Use consistent letter spacing within text blocks'
+          });
+        }
+      }
+      return;
+    }
+
+    if (!requirements?.letterSpacing) return; // Skip if no requirements
 
     const letterSpacing = normalizeLetterSpacing(node.letterSpacing);
-    if (requirements && (
-      letterSpacing < requirements.letterSpacing.min || 
-      letterSpacing > requirements.letterSpacing.max
-    )) {
+    const { min, max } = requirements.letterSpacing;
+
+    if (letterSpacing < min || letterSpacing > max) {
       issues.push({
         type: 'Invalid Letter Spacing',
         message: `Letter spacing ${letterSpacing} is outside recommended range`,
         severity: 'warning',
         code: 'TYPOGRAPHY_INVALID_LETTER_SPACING',
         node,
-        expected: `${requirements.letterSpacing.min}-${requirements.letterSpacing.max}`,
+        expected: `${min}-${max}`,
         actual: letterSpacing,
-        suggestion: `Adjust letter spacing to be between ${requirements.letterSpacing.min} and ${requirements.letterSpacing.max}`
+        suggestion: `Adjust letter spacing to be between ${min} and ${max}`
       });
     }
   }
@@ -776,20 +884,41 @@ export class TypographyValidator {
     context: TextContext, 
     issues: TypographyIssue[]
   ) {
-    const contextRule = this.config.contextRules[context.role];
-    if (!contextRule?.requiredAlignment) return;
+    if (isMixed(node.textAlignHorizontal)) {
+      // Handle mixed alignments through rich text analysis
+      const analysis = this.analyzeRichText(node);
+      if (analysis) {
+        const uniqueAlignments = new Set(analysis.segments.map(s => s.style.textAlignHorizontal));
+        if (uniqueAlignments.size > 1) {
+          issues.push({
+            type: 'Mixed Styles',
+            message: 'Mixed text alignments detected',
+            severity: 'warning',
+            code: 'TYPOGRAPHY_MIXED_ALIGNMENTS',
+            node,
+            expected: 'Consistent text alignment',
+            actual: Array.from(uniqueAlignments).join(', '),
+            suggestion: 'Use consistent text alignment within text blocks'
+          });
+        }
+      }
+      return;
+    }
 
+    const contextRule = this.config.contextRules[context.role];
     const alignment = node.textAlignHorizontal as TextAlignment;
-    if (!contextRule.requiredAlignment.includes(alignment)) {
+    const allowedAlignments = contextRule?.requiredAlignment || ['LEFT'];
+
+    if (!allowedAlignments.includes(alignment)) {
       issues.push({
         type: 'Invalid Alignment',
         message: `Text alignment "${alignment}" is not recommended for ${context.role}`,
         severity: 'warning',
         code: 'TYPOGRAPHY_INVALID_ALIGNMENT',
         node,
-        expected: contextRule.requiredAlignment.join(', '),
+        expected: allowedAlignments.join(', '),
         actual: alignment,
-        suggestion: `Use ${contextRule.requiredAlignment.join(' or ')} alignment for ${context.role}`
+        suggestion: `Use ${allowedAlignments.join(' or ')} alignment for ${context.role}`
       });
     }
   }
