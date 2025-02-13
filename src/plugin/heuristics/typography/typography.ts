@@ -429,41 +429,7 @@ export class TypographyValidator {
       styleOverrides: []
     };
 
-    const analysis: RichTextAnalysis = {
-      segments: segments.map(segment => ({
-        text: segment.characters,
-        style: {
-          fontFamily: isMixed(segment.fontName) ? 'mixed' : segment.fontName.family,
-          fontSize: isMixed(segment.fontSize) ? 0 : segment.fontSize,
-          fontWeight: isMixed(segment.fontName) ? 'mixed' : segment.fontName.style,
-          lineHeight: isMixed(segment.lineHeight) ? undefined : normalizeLineHeight(segment.lineHeight, isMixed(segment.fontSize) ? undefined : segment.fontSize).value,
-          letterSpacing: isMixed(segment.letterSpacing) ? undefined : normalizeLetterSpacing(segment.letterSpacing)
-        },
-        start: segment.start,
-        end: segment.end
-      })),
-      hasMultipleFonts: false,
-      hasMultipleSizes: false,
-      hasMultipleWeights: false,
-      styleOverrides: []
-    };
 
-    // Check for multiple styles
-    const fonts = new Set<string>();
-    const sizes = new Set<number>();
-    const weights = new Set<string>();
-
-    analysis.segments.forEach(segment => {
-      if (segment.style.fontFamily !== 'mixed') fonts.add(segment.style.fontFamily);
-      if (segment.style.fontSize > 0) sizes.add(segment.style.fontSize);
-      if (segment.style.fontWeight !== 'mixed') weights.add(segment.style.fontWeight);
-    });
-
-    analysis.hasMultipleFonts = fonts.size > 1;
-    analysis.hasMultipleSizes = sizes.size > 1;
-    analysis.hasMultipleWeights = weights.size > 1;
-
-    return analysis;
   }
 
   /**
@@ -527,14 +493,6 @@ export class TypographyValidator {
    * Validate font size
    */
   protected getBreakpointKey(frameWidth: number): BreakpointKey {
-    // Fixed breakpoint ranges
-    if (frameWidth < 375) return 'xs';
-    if (frameWidth < 768) return 'sm';
-    if (frameWidth < 1024) return 'md';
-    if (frameWidth < 1440) return 'lg';
-    return 'xl';
-    if (frameWidth <= 1440) return 'lg';
-    return 'xl';
     const { breakpoints } = this.config.responsive;
     const breakpointKeys: BreakpointKey[] = ['xs', 'sm', 'md', 'lg', 'xl'];
 
@@ -552,6 +510,11 @@ export class TypographyValidator {
       }
     }
 
+    // Use fixed breakpoint ranges as fallback
+    if (frameWidth < 375) return 'xs';
+    if (frameWidth < 768) return 'sm';
+    if (frameWidth < 1024) return 'md';
+    if (frameWidth < 1440) return 'lg';
     return 'xl';  // Default to largest breakpoint
   }
 
