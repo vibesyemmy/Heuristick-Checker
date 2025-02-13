@@ -1,10 +1,17 @@
 import { evaluateButtonContrast } from './buttonContrast';
 import { evaluateTextContrast } from './contrast';
 import { evaluateIconContrast } from './iconContrast';
+import { evaluateTypography } from './typography';
 import { BUTTON_CONTRAST_REQUIREMENTS } from './utils/buttonDetection';
 import { HeuristicResult, Heuristic } from './types';
 
 export const heuristics: Heuristic[] = [
+  {
+    id: 'typography',
+    name: 'Typography',
+    description: 'Checks if text elements follow typography guidelines',
+    check: evaluateTypography
+  },
   {
     id: 'text-contrast',
     name: 'Text Contrast',
