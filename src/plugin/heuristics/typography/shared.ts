@@ -130,19 +130,15 @@ export function getTextStyles(node: TextNodeWithStyle): StyleOverride[] {
  * Extracts role from component or frame name
  */
 export function extractRoleFromName(name: string): TextRole | null {
-  if (!name) return null;
-
-  // Split by slashes and take the last part (handles Main/Button case)
-  const parts = name.split('/');
-  const lastPart = parts[parts.length - 1];
-  const lowerName = lastPart.toLowerCase();
+  const lowerName = name.toLowerCase();
   
-  // Check for exact matches first
-  if (lowerName === 'button') return 'button';
-  if (lowerName === 'title') return 'heading';
-  
-  // Then check for partial matches
-  if (lowerName.includes('heading') || lowerName.includes('title')) return 'heading';
+  // Check for specific heading levels
+  if (lowerName.match(/heading[123]/)) {
+    const level = lowerName.match(/heading([123])/)?.[1];
+    return `heading${level}` as TextRole;
+  }
+  // Default to heading1 for generic headings and titles
+  if (lowerName.includes('heading') || lowerName.includes('title')) return 'heading1';
   if (lowerName.includes('button') || lowerName.includes('cta')) return 'button';
   if (lowerName.includes('label')) return 'label';
   if (lowerName.includes('link')) return 'link';

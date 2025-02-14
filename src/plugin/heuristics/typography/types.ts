@@ -2,62 +2,51 @@
  * Typography validation types and interfaces
  */
 
-export type TextRole = 'heading' | 'body' | 'button' | 'label' | 'link' | 'list' | 'navigation';
-export type BreakpointKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
-
-export type TextAlignment = 'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED';
-
+export type HeadingRole = 'heading1' | 'heading2' | 'heading3';
+export type TextRole = HeadingRole | 'body' | 'button' | 'label' | 'link' | 'list' | 'navigation';
 export interface Breakpoint {
-  minWidth?: number;
-  maxWidth?: number;
-  baseSize: number;
+  min?: number;
+  max?: number;
 }
 
-export interface TypeScale {
-  small: number;
-  base: number;
-  h3: number;
-  h2: number;
-  h1: number;
+export interface FontSizeRange {
+  min: number;
+  max: number;
 }
 
-export interface ComponentScale {
-  small: number[];
-  medium: number[];
-  large: number[];
-}
-
-export interface ResponsiveScale {
-  breakpoints: Record<BreakpointKey, Breakpoint>;
-  multipliers: Record<BreakpointKey, number>;
-  scales: {
-    [K in BreakpointKey]: TypeScale;
-  } & {
-    [key: string]: ComponentScale | TypeScale;
+export interface TextStyleConfig {
+  fontSize: {
+    [breakpoint: string]: FontSizeRange;
   };
+  lineHeight: {
+    min: number;
+    max: number;
+  };
+  letterSpacing?: {
+    min: number;
+    max: number;
+  };
+  fontWeight?: string[];
+  fontFamily?: string[];
 }
 
 export interface TypographyConfig {
-  responsive: ResponsiveScale;
+  breakpoints: {
+    [key: string]: Breakpoint;
+  };
   fontFamilies: {
     primary: string[];
     secondary: string[];
     allowed: string[];  // All allowed fonts including primary/secondary
   };
   styles: {
-    [key: string]: {  // e.g., 'heading1', 'body', 'button'
-      fontSize: number[];
-      fontWeight: string[];
-      lineHeight: { min: number; max: number };
-      letterSpacing: { min: number; max: number };
-      alignment?: TextAlignment[];
-    };
+    [key: string]: TextStyleConfig & {
+        };
   };
   contextRules: {
     [key in TextRole]?: {
       preferredStyle: string;  // References a style key
       allowedStyles: string[];
-      requiredAlignment?: TextAlignment[];
     };
   };
 }
@@ -69,9 +58,6 @@ export interface TextContext {
   confidence: number;  // How confident we are about the role
   alternativeRoles?: TextRole[];  // Other possible roles if ambiguous
   hasAmbiguity?: boolean;  // True if there are competing signals
-  frameWidth: number;
-  breakpointKey: BreakpointKey;
-  sizeCategory: 'small' | 'medium' | 'large';
 }
 
 export interface StyleOverride {
@@ -102,39 +88,25 @@ export interface ValidationResult {
   suggestions: string[];
   node: TextNode;
   styleOverrides?: StyleOverride[];
-  richTextAnalysis?: RichTextAnalysis;
 }
-
-
 
 export interface RichTextAnalysis {
   segments: {
     text: string;
     style: {
-      fontFamily: string | 'mixed';
+      fontFamily: string;
       fontSize: number;
-      fontWeight: string | 'mixed';
+      fontWeight: string;
       lineHeight?: number;
       letterSpacing?: number;
     };
     start: number;
     end: number;
   }[];
-  characters: string;
-  style: {
-    fontFamily: string | 'mixed';
-    fontSize: number;
-    fontWeight: string | 'mixed';
-    lineHeight?: number;
-    letterSpacing?: number;
-  };
   hasMultipleFonts: boolean;
   hasMultipleSizes: boolean;
   hasMultipleWeights: boolean;
   styleOverrides: StyleOverride[];
-  issues: TypographyIssue[];
-  start: number;
-  end: number;
 }
 
 // Configuration for text role detection

@@ -2,76 +2,16 @@
  * Default typography configuration
  */
 
-import { TypographyConfig, TextRoleConfig, TypeScale } from './types';
-
-// Major third scale (1.25) with progressive enhancement
-const generateTypeScale = (base: number, multiplier: number = 1): TypeScale => {
-  const scale = 1.25;  // Major third scale
-  return {
-    small: Math.round(base * multiplier),
-    base: Math.round(base * scale * multiplier),
-    h3: Math.round(base * scale * scale * multiplier),
-    h2: Math.round(base * scale * scale * scale * multiplier),
-    h1: Math.round(base * scale * scale * scale * scale * multiplier)
-  };
-};
+import { TypographyConfig, TextRoleConfig } from './types';
 
 export const defaultTypographyConfig: TypographyConfig = {
-  responsive: {
-    breakpoints: {
-      xs: { maxWidth: 320, baseSize: 14 },
-      sm: { minWidth: 321, maxWidth: 768, baseSize: 15 },
-      md: { minWidth: 769, maxWidth: 1024, baseSize: 16 },
-      lg: { minWidth: 1025, maxWidth: 1440, baseSize: 16 },
-      xl: { minWidth: 1441, baseSize: 18 }
-    },
-    multipliers: {
-      xs: 1,
-      sm: 1.125,
-      md: 1.25,
-      lg: 1.333,
-      xl: 1.5
-    },
-    scales: {
-      // Dynamic scales based on breakpoint base sizes
-      xs: generateTypeScale(14),      // Mobile portrait
-      sm: generateTypeScale(15, 1.125), // Mobile landscape
-      md: generateTypeScale(16, 1.25),  // Tablet
-      lg: generateTypeScale(16, 1.333), // Desktop
-      xl: generateTypeScale(18, 1.5),   // Large screens
-
-      // Component-specific scales
-      heading1: {
-        small: [24, 32],
-        medium: [32, 40],
-        large: [40, 48]
-      },
-      heading2: {
-        small: [20, 24],
-        medium: [24, 32],
-        large: [32, 40]
-      },
-      heading3: {
-        small: [16, 20],
-        medium: [20, 24],
-        large: [24, 32]
-      },
-      body: {
-        small: [14, 16],
-        medium: [14, 16],
-        large: [16, 18]
-      },
-      button: {
-        small: [14, 16],
-        medium: [14, 16],
-        large: [14, 16]
-      },
-      caption: {
-        small: [12],
-        medium: [12, 14],
-        large: [14]
-      }
-    }
+  breakpoints: {
+    xs: { max: 639 },
+    sm: { min: 640, max: 767 },
+    md: { min: 768, max: 1023 },
+    lg: { min: 1024, max: 1279 },
+    xl: { min: 1280, max: 1535 },
+    xxl: { min: 1536 }
   },
   fontFamilies: {
     primary: ['Inter', 'SF Pro Display'],
@@ -80,68 +20,110 @@ export const defaultTypographyConfig: TypographyConfig = {
   },
   styles: {
     'heading1': {
-      fontSize: [32, 40, 48],
-      fontWeight: ['Semi Bold', 'Bold'],
+      fontSize: {
+        xs: { min: 24, max: 32 },
+        sm: { min: 28, max: 36 },
+        md: { min: 32, max: 40 },
+        lg: { min: 36, max: 48 },
+        xl: { min: 40, max: 56 },
+        xxl: { min: 48, max: 64 }
+      },
       lineHeight: { min: 1.2, max: 1.4 },
-      letterSpacing: { min: -0.2, max: 0 },
-      alignment: ['LEFT', 'CENTER']
+      letterSpacing: { min: -0.5, max: 0 },
+
     },
     'heading2': {
-      fontSize: [24, 28, 32],
-      fontWeight: ['Semi Bold', 'Bold'],
+      fontSize: {
+        xs: { min: 20, max: 28 },
+        sm: { min: 24, max: 32 },
+        md: { min: 28, max: 36 },
+        lg: { min: 32, max: 40 },
+        xl: { min: 36, max: 48 },
+        xxl: { min: 40, max: 56 }
+      },
       lineHeight: { min: 1.2, max: 1.4 },
-      letterSpacing: { min: -0.1, max: 0 },
-      alignment: ['LEFT', 'CENTER']
+      letterSpacing: { min: -0.3, max: 0 },
+
     },
     'heading3': {
-      fontSize: [20, 24],
-      fontWeight: ['Semi Bold', 'Medium'],
+      fontSize: {
+        xs: { min: 18, max: 24 },
+        sm: { min: 20, max: 28 },
+        md: { min: 24, max: 32 },
+        lg: { min: 28, max: 36 },
+        xl: { min: 32, max: 40 },
+        xxl: { min: 36, max: 48 }
+      },
       lineHeight: { min: 1.2, max: 1.4 },
-      letterSpacing: { min: -0.1, max: 0 },
-      alignment: ['LEFT', 'CENTER']
+      letterSpacing: { min: -0.2, max: 0 },
+
     },
     'body': {
-      fontSize: [14, 16],
-      fontWeight: ['Regular', 'Medium'],
-      lineHeight: { min: 1.5, max: 1.8 },
+      fontSize: {
+        xs: { min: 14, max: 16 },
+        sm: { min: 14, max: 16 },
+        md: { min: 16, max: 18 },
+        lg: { min: 16, max: 18 },
+        xl: { min: 16, max: 20 },
+        xxl: { min: 18, max: 22 }
+      },
+      lineHeight: { min: 1.4, max: 1.6 },
       letterSpacing: { min: -0.1, max: 0.1 },
-      alignment: ['LEFT', 'JUSTIFIED']
+
     },
     'button': {
-      fontSize: [14, 16],  // Allow 14-16px for buttons
-      fontWeight: ['Medium', 'Semi Bold'],
+      fontSize: {
+        xs: { min: 14, max: 16 },
+        sm: { min: 14, max: 16 },
+        md: { min: 14, max: 16 },
+        lg: { min: 14, max: 16 },
+        xl: { min: 16, max: 18 },
+        xxl: { min: 16, max: 18 }
+      },
       lineHeight: { min: 1.2, max: 1.4 },
       letterSpacing: { min: 0, max: 0.1 },
-      alignment: ['CENTER']
+
     },
     'caption': {
-      fontSize: [12],
-      fontWeight: ['Regular'],
+      fontSize: {
+        xs: { min: 12, max: 12 },
+        sm: { min: 12, max: 12 },
+        md: { min: 12, max: 14 },
+        lg: { min: 12, max: 14 },
+        xl: { min: 12, max: 14 },
+        xxl: { min: 14, max: 16 }
+      },
       lineHeight: { min: 1.4, max: 1.6 },
       letterSpacing: { min: 0, max: 0.1 },
-      alignment: ['LEFT']
+
     }
   },
   contextRules: {
-    heading: {
+    heading1: {
       preferredStyle: 'heading1',
-      allowedStyles: ['heading1', 'heading2', 'heading3'],
-      requiredAlignment: ['LEFT', 'CENTER']
+      allowedStyles: ['heading1']
+    },
+    heading2: {
+      preferredStyle: 'heading2',
+      allowedStyles: ['heading2']
+    },
+    heading3: {
+      preferredStyle: 'heading3',
+      allowedStyles: ['heading3']
     },
     body: {
       preferredStyle: 'body',
       allowedStyles: ['body', 'caption'],
-      requiredAlignment: ['LEFT', 'JUSTIFIED']
+
     },
     button: {
       preferredStyle: 'button',
       allowedStyles: ['button'],
-      requiredAlignment: ['CENTER']
+
     },
     label: {
       preferredStyle: 'caption',
-      allowedStyles: ['caption', 'body'],
-      requiredAlignment: ['LEFT']
+      allowedStyles: ['caption', 'body']
     },
     link: {
       preferredStyle: 'body',
@@ -149,13 +131,11 @@ export const defaultTypographyConfig: TypographyConfig = {
     },
     list: {
       preferredStyle: 'body',
-      allowedStyles: ['body', 'caption'],
-      requiredAlignment: ['LEFT']
+      allowedStyles: ['body', 'caption']
     },
     navigation: {
       preferredStyle: 'body',
-      allowedStyles: ['body', 'button'],
-      requiredAlignment: ['LEFT', 'CENTER']
+      allowedStyles: ['body', 'button']
     }
   }
 };
@@ -195,9 +175,20 @@ export const defaultTextRoleConfig: TextRoleConfig = {
     /^topbar/i
   ],
   styleSignals: {
-    heading: {
-      fontSize: { min: 20, max: 48 },
-      fontWeight: ['Semi Bold', 'Bold'],
+    heading1: {
+      fontSize: { min: 32, max: 48 },
+      position: {
+        isTopLevel: true
+      }
+    },
+    heading2: {
+      fontSize: { min: 24, max: 31 },
+      position: {
+        isTopLevel: true
+      }
+    },
+    heading3: {
+      fontSize: { min: 20, max: 23 },
       position: {
         isTopLevel: true
       }

@@ -2,7 +2,8 @@
  * Text role analysis functionality
  */
 
-import { TextRole, TextContext, TextRoleConfig, RichTextAnalysis, StyleOverride } from './types';
+import { TextRole, HeadingRole, TextContext, TextRoleConfig, RichTextAnalysis, StyleOverride } from './types';
+import { ContextAnalyzer, ContainerContext } from './context';
 import { TextNodeWithStyle, isMixed, isFontName, normalizeLineHeight, normalizeLetterSpacing, extractRoleFromName } from './shared';
 import { defaultTextRoleConfig } from './config';
 
@@ -15,61 +16,19 @@ interface ContextSignal {
 
 export class TextRoleAnalyzer {
   private config: TextRoleConfig;
+  private contextAnalyzer: ContextAnalyzer;
 
   constructor(config: TextRoleConfig = defaultTextRoleConfig) {
     this.config = config;
-  }
-
-  private getFrameWidth(node: TextNodeWithStyle): number {
-    let current = node.parent;
-    let width = 1024; // Default width
-
-    while (current) {
-      if ('width' in current) {
-        width = current.width;
-        break;
-      }
-      current = current.parent;
-    }
-
-    return width;
-  }
-
-  private getBreakpointKey(node: TextNodeWithStyle): BreakpointKey {
-    const width = this.getFrameWidth(node);
-    if (width <= 600) return 'xs';
-    if (width <= 960) return 'sm';
-    if (width <= 1280) return 'md';
-    if (width <= 1920) return 'lg';
-    return 'xl';
-  }
-
-  private getSizeCategory(node: TextNodeWithStyle): 'small' | 'medium' | 'large' {
-    const width = this.getFrameWidth(node);
-    if (width <= 960) return 'small';
-    if (width <= 1280) return 'medium';
-    return 'large';
+    this.contextAnalyzer = new ContextAnalyzer();
   }
 
   /**
    * Main analysis function that combines all signals to determine text role
    */
   async analyzeRole(node: TextNodeWithStyle): Promise<TextContext> {
-    console.log('Debug - analyzeRole start:', {
-      nodeName: node.name,
-      nodeText: node.characters,
-      fontSize: node.fontSize
-    });
-
     const signals = await this.gatherContextSignals(node);
-    const role = this.determineRole(signals, node);
-
-    console.log('Debug - analyzeRole result:', {
-      signals,
-      role
-    });
-
-    return role;
+    return this.determineRole(signals, node);
   }
 
   /**
@@ -138,43 +97,73 @@ export class TextRoleAnalyzer {
   private async analyzePosition(node: TextNodeWithStyle): Promise<ContextSignal[]> {
     const signals: ContextSignal[] = [];
     
-    // Check if node is at the top of its parent
-    const parent = node.parent;
-    if (parent && 'children' in parent) {
-      const siblings = parent.children;
-      const nodeIndex = siblings.indexOf(node);
-      
-      // Top-level position signal
-      if (nodeIndex === 0 || nodeIndex === 1) {
-        signals.push({
-          role: 'heading',
-          confidence: 0.5,
-          source: 'position',
-          reason: 'Text appears at the top of its container'
-        });
-      }
-
-      // Check for nearby input fields (label detection)
-      const nearbyInputs = siblings.some((sibling, index) => {
-        if (Math.abs(index - nodeIndex) <= 1) {  // Check adjacent nodes
-          return sibling.type === 'RECTANGLE' || 
-                 sibling.name.toLowerCase().includes('input') ||
-                 sibling.name.toLowerCase().includes('field');
-        }
-        return false;
+    // Get enhanced container context
+    const containerContext = await this.contextAnalyzer.analyzeContainer(node);
+    
+    // Top-level position signals
+    if (containerContext.relativePosition.verticalPosition === 'top' && 
+        containerContext.isFirstChild) {
+      const role = this.determineHeadingRole(node);
+      signals.push({
+        role,
+        confidence: 0.7,  // Increased confidence due to better context
+        source: 'position',
+        reason: `Text appears at the top of ${containerContext.containerType}`
       });
+    }
 
+    // Header/Footer specific signals
+    if (containerContext.containerType === 'header') {
+      signals.push({
+        role: 'heading1',
+        confidence: 0.8,
+        source: 'position',
+        reason: 'Text appears in page header'
+      });
+    }
+
+    // Sidebar specific signals
+    if (containerContext.containerType === 'sidebar') {
+      signals.push({
+        role: 'navigation',
+        confidence: 0.6,
+        source: 'position',
+        reason: 'Text appears in sidebar'
+      });
+    }
+
+    // Label detection based on context
+    if (containerContext.containerType === 'section' && 
+        containerContext.relativePosition.verticalPosition === 'top') {
+      const nearbyInputs = this.checkForNearbyInputs(node);
       if (nearbyInputs) {
         signals.push({
           role: 'label',
-          confidence: 0.6,
+          confidence: 0.7,
           source: 'position',
-          reason: 'Text appears near input field'
+          reason: 'Text appears above input field'
         });
       }
     }
 
     return signals;
+  }
+
+  private checkForNearbyInputs(node: TextNodeWithStyle): boolean {
+    const parent = node.parent;
+    if (!parent || !('children' in parent)) return false;
+
+    const siblings = parent.children;
+    const nodeIndex = siblings.indexOf(node);
+    
+    return siblings.some((sibling, index) => {
+      if (Math.abs(index - nodeIndex) <= 1) {  // Check adjacent nodes
+        return sibling.type === 'RECTANGLE' || 
+               sibling.name.toLowerCase().includes('input') ||
+               sibling.name.toLowerCase().includes('field');
+      }
+      return false;
+    });
   }
 
   /**
@@ -183,17 +172,6 @@ export class TextRoleAnalyzer {
   private analyzeContent(node: TextNodeWithStyle): ContextSignal[] {
     const signals: ContextSignal[] = [];
     const text = node.characters.trim();
-    const nodeName = node.name?.trim() || '';
-
-    console.log('Debug - analyzeContent:', {
-      text,
-      nodeName,
-      patterns: Object.fromEntries(
-        Object.entries(this.config)
-          .filter(([k]) => k.endsWith('Patterns'))
-          .map(([k, v]) => [k, v])
-      )
-    });
 
     // Check against pattern matchers
     Object.entries(this.config).forEach(([key, patterns]) => {
@@ -263,9 +241,6 @@ export class TextRoleAnalyzer {
    * Determine final role from collected signals
    */
   private determineRole(signals: ContextSignal[], node: TextNodeWithStyle): TextContext {
-    const frameWidth = this.getFrameWidth(node);
-    const breakpointKey = this.getBreakpointKey(node);
-    const sizeCategory = this.getSizeCategory(node);
     if (signals.length === 0) {
       return {
         role: 'body',  // Default role
@@ -298,8 +273,9 @@ export class TextRoleAnalyzer {
 
     // Determine heading level if applicable
     let level: number | undefined;
-    if (primaryRole === 'heading' as TextRole) {
-      level = this.determineHeadingLevel(node);
+    const headingMatch = primaryRole.match(/^heading([123])$/);
+    if (headingMatch) {
+      level = parseInt(headingMatch[1]);
     }
 
     return {
@@ -315,15 +291,12 @@ export class TextRoleAnalyzer {
   /**
    * Determine heading level based on font size and hierarchy
    */
-  private determineHeadingLevel(node: TextNodeWithStyle): number {
-    if (isMixed(node.fontSize)) return 2;  // Default to h2 if mixed
+  private determineHeadingRole(node: TextNodeWithStyle): HeadingRole {
+    if (isMixed(node.fontSize)) return 'heading2';  // Default to h2 if mixed
     
     const fontSize = node.fontSize;
-    if (fontSize >= 32) return 1;
-    if (fontSize >= 24) return 2;
-    if (fontSize >= 20) return 3;
-    if (fontSize >= 18) return 4;
-    if (fontSize >= 16) return 5;
-    return 6;
+    if (fontSize >= 32) return 'heading1';
+    if (fontSize >= 24) return 'heading2';
+    return 'heading3';
   }
 }
