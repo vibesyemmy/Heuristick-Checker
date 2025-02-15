@@ -10,6 +10,7 @@ import {
   StyleOverride,
   RichTextAnalysis
 } from './types';
+import { DesignSystemDetector, DesignSystemInfo } from './design-system';
 import { 
   TextNodeWithStyle, 
   isMixed, 
@@ -24,6 +25,10 @@ export class TypographyValidator {
   private config: TypographyConfig;
   private roleAnalyzer: TextRoleAnalyzer;
   private fontCache: Set<string> = new Set();
+  private designSystemDetector: DesignSystemDetector | null = null;
+  private designSystem: DesignSystemInfo | null = null;
+  private designSystemLastChecked: number = 0;
+  private readonly DESIGN_SYSTEM_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
   constructor(config: TypographyConfig = defaultTypographyConfig) {
     this.config = config;
@@ -31,9 +36,29 @@ export class TypographyValidator {
   }
 
   /**
+   * Check for design system updates
+   */
+  private async updateDesignSystem(document: DocumentNode): Promise<void> {
+    const now = Date.now();
+    if (
+      !this.designSystemDetector ||
+      now - this.designSystemLastChecked > this.DESIGN_SYSTEM_CHECK_INTERVAL
+    ) {
+      this.designSystemDetector = new DesignSystemDetector(document);
+      this.designSystem = await this.designSystemDetector.detect();
+      this.designSystemLastChecked = now;
+    }
+  }
+
+  /**
    * Validate a batch of text nodes efficiently
    */
   async validateBatch(nodes: TextNode[]): Promise<ValidationResult[]> {
+    // Update design system detection
+    if (nodes.length > 0) {
+      await this.updateDesignSystem(nodes[0].parent?.parent as DocumentNode);
+    }
+
     // Group nodes by font family to minimize font loading
     const fontGroups = this.groupByFont(nodes);
     
@@ -145,7 +170,41 @@ export class TypographyValidator {
   /**
    * Get style requirements based on text context
    */
+  /**
+   * Get validation rules from design system
+   */
+  private getDesignSystemRules(node: TextNodeWithStyle, context: TextContext): any {
+    if (!this.designSystem) return null;
+
+    const tokens = this.designSystem.tokens;
+    const role = context.role;
+    const frameWidth = ('width' in (node.parent || {})) ? (node.parent as FrameNode).width : 0;
+
+    // Find matching token for the role
+    const token = Object.values(tokens.typography).find(t => t.role === role);
+    if (!token) return null;
+
+    // Find appropriate breakpoint
+    const breakpoint = Object.entries(tokens.breakpoints)
+      .find(([_, range]) => {
+        return (!range.min || frameWidth >= range.min) && 
+               (!range.max || frameWidth <= range.max);
+      })?.[0];
+
+    return token.breakpoints[breakpoint || 'default'];
+  }
+
   private getStyleRequirements(context: TextContext) {
+    // Try to get rules from design system first
+    const designSystemRules = context && this.designSystem ? this.getDesignSystemRules(context.node as TextNodeWithStyle, context) : null;
+    if (designSystemRules) {
+      return {
+        ...designSystemRules,
+        source: 'design-system'
+      };
+    }
+
+    // Fall back to config rules
     const contextRule = this.config.contextRules[context.role];
     if (!contextRule) return null;
 
@@ -154,7 +213,8 @@ export class TypographyValidator {
 
     return {
       ...preferredStyle,
-      allowedStyles: contextRule.allowedStyles.map(style => this.config.styles[style])
+      allowedStyles: contextRule.allowedStyles.map(style => this.config.styles[style]),
+      source: 'config'
     };
   }
 
@@ -289,6 +349,10 @@ export class TypographyValidator {
     requirements: any, 
     issues: TypographyIssue[]
   ) {
+    if (!requirements) return;
+
+    const isFromDesignSystem = requirements.source === 'design-system';
+    const severity = isFromDesignSystem ? 'error' : 'warning';  // Stricter for design system
     this.log('Validating font size...');
     if (isMixed(node.fontSize)) {
       this.log('Skipping font size validation - mixed font sizes detected');
@@ -319,8 +383,8 @@ export class TypographyValidator {
       });
       issues.push({
         type: 'Invalid Font Size',
-        message: `Font size ${fontSize}px is outside the recommended range of ${fontSizeRange.min}px to ${fontSizeRange.max}px for this breakpoint (${breakpointKey}, width: ${frameWidth}px)`,
-        severity: 'warning',
+        message: `Font size ${fontSize}px is outside the recommended range of ${fontSizeRange.min}px to ${fontSizeRange.max}px for this breakpoint (${breakpointKey}, width: ${frameWidth}px)${isFromDesignSystem ? ' (Design System)' : ''}`,
+        severity,
         code: 'TYPOGRAPHY_INVALID_SIZE',
         node,
         expected: `${fontSizeRange.min}px - ${fontSizeRange.max}px`,
@@ -332,6 +396,14 @@ export class TypographyValidator {
 
 
   /**
+   * Round a number to the nearest even number
+   */
+  private roundToEven(num: number): number {
+    const rounded = Math.round(num);
+    return rounded % 2 === 0 ? rounded : rounded + 1;
+  }
+
+  /**
    * Validate line height
    */
   private validateLineHeight(
@@ -339,18 +411,24 @@ export class TypographyValidator {
     requirements: any, 
     issues: TypographyIssue[]
   ) {
+    if (!requirements) return;
+
+    const isFromDesignSystem = requirements.source === 'design-system';
+    const severity = isFromDesignSystem ? 'error' : 'warning';  // Stricter for design system
     this.log('Validating line height...');
     if (isMixed(node.lineHeight) || isMixed(node.fontSize)) return; // Skip mixed values
 
     const fontSize = node.fontSize;
-    const normalizedLineHeight = normalizeLineHeight(node.lineHeight, fontSize);
+    const normalizedLineHeight = normalizeLineHeight(node.lineHeight, fontSize, this.config.autoLineHeight);
     
     // Convert ratio requirements to pixels if we have pixel values
     let minHeight: number, maxHeight: number, actualHeight: number;
+    const isAuto = node.lineHeight.unit === 'AUTO';
+    
     if (normalizedLineHeight.unit === 'PIXELS') {
-      // We have pixel values, convert requirements to pixels
-      minHeight = requirements.lineHeight.min * fontSize;
-      maxHeight = requirements.lineHeight.max * fontSize;
+      // We have pixel values, convert requirements to pixels and round to even numbers
+      minHeight = this.roundToEven(requirements.lineHeight.min * fontSize);
+      maxHeight = this.roundToEven(requirements.lineHeight.max * fontSize);
       actualHeight = normalizedLineHeight.value;
     } else {
       // We have ratio values
@@ -361,15 +439,18 @@ export class TypographyValidator {
 
     if (requirements && (actualHeight < minHeight || actualHeight > maxHeight)) {
       const unit = normalizedLineHeight.unit === 'PIXELS' ? 'px' : '';
+      const autoMessage = isAuto ? ' (Auto)' : '';
       issues.push({
         type: 'Invalid Line Height',
-        message: `Line height ${actualHeight}${unit} is outside recommended range`,
-        severity: 'warning',
+        message: `Line height ${actualHeight}${unit}${autoMessage} is outside recommended range${isFromDesignSystem ? ' (Design System)' : ''}`,
+        severity: isAuto ? 'info' : severity,
         code: 'TYPOGRAPHY_INVALID_LINE_HEIGHT',
         node,
         expected: `${minHeight}${unit}-${maxHeight}${unit}`,
         actual: actualHeight,
-        suggestion: `Adjust line height to be between ${minHeight}${unit} and ${maxHeight}${unit}`
+        suggestion: isAuto ? 
+          `Consider setting an explicit line height between ${minHeight}${unit} and ${maxHeight}${unit} instead of using Auto` :
+          `Adjust line height to be between ${minHeight}${unit} and ${maxHeight}${unit}`
       });
     }
   }

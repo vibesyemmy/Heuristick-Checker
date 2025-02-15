@@ -4,7 +4,29 @@
 
 import { TypographyConfig, TextRoleConfig } from './types';
 
+export interface AutoLineHeightConfig {
+  // Default ratio to use when line height is set to AUTO
+  defaultRatio: number;
+  // Mapping of font size ranges to recommended AUTO line height ratios
+  sizeRanges: {
+    min: number;
+    max: number;
+    ratio: number;
+  }[];
+}
+
+export const defaultAutoLineHeight: AutoLineHeightConfig = {
+  defaultRatio: 1.2,
+  sizeRanges: [
+    { min: 0, max: 16, ratio: 1.4 },     // Small text needs more spacing
+    { min: 17, max: 24, ratio: 1.3 },    // Medium text
+    { min: 25, max: 32, ratio: 1.2 },    // Large text
+    { min: 33, max: Infinity, ratio: 1.1 }  // Very large text needs less spacing
+  ]
+};
+
 export const defaultTypographyConfig: TypographyConfig = {
+  autoLineHeight: defaultAutoLineHeight,
   breakpoints: {
     xs: { max: 639 },
     sm: { min: 640, max: 767 },

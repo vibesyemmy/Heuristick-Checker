@@ -3,6 +3,7 @@
  */
 
 import { TextRole, StyleOverride } from './types';
+import { AutoLineHeightConfig, defaultAutoLineHeight } from './config';
 
 export interface TextNodeWithStyle extends TextNode {
   // Additional properties that might be needed for style analysis
@@ -38,7 +39,20 @@ export interface NormalizedLineHeight {
   unit: 'PIXELS' | 'RATIO';  // Whether it's in pixels or a ratio
 }
 
-export function normalizeLineHeight(lineHeight: LineHeight, fontSize?: number): NormalizedLineHeight {
+export function getAutoLineHeightRatio(fontSize: number, config: AutoLineHeightConfig): number {
+  // Find the appropriate ratio based on font size
+  const range = config.sizeRanges.find(range => 
+    fontSize >= range.min && fontSize <= range.max
+  );
+  
+  return range ? range.ratio : config.defaultRatio;
+}
+
+export function normalizeLineHeight(
+  lineHeight: LineHeight, 
+  fontSize?: number,
+  autoConfig: AutoLineHeightConfig = defaultAutoLineHeight
+): NormalizedLineHeight {
   switch (lineHeight.unit) {
     case 'PIXELS':
       return {
@@ -57,8 +71,15 @@ export function normalizeLineHeight(lineHeight: LineHeight, fontSize?: number): 
         unit: 'RATIO'
       };
     case 'AUTO':
+      if (fontSize) {
+        const ratio = getAutoLineHeightRatio(fontSize, autoConfig);
+        return {
+          value: ratio,
+          unit: 'RATIO'
+        };
+      }
       return {
-        value: 1.2,
+        value: autoConfig.defaultRatio,
         unit: 'RATIO'
       };
     default:

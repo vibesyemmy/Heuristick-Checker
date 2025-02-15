@@ -245,7 +245,8 @@ export class TextRoleAnalyzer {
       return {
         role: 'body',  // Default role
         confidence: 0.3,
-        hasAmbiguity: false
+        hasAmbiguity: false,
+        node
       };
     }
 
@@ -284,7 +285,8 @@ export class TextRoleAnalyzer {
       confidence: Math.min(maxConfidence / signals.length, 1),
       alternativeRoles: alternativeRoles.length > 0 ? alternativeRoles : undefined,
       hasAmbiguity: alternativeRoles.length > 0,
-      parentComponent: node.parent?.name
+      parentComponent: node.parent?.name,
+      node
     };
   }
 

@@ -57,17 +57,3 @@ export async function evaluateTypography(node: SceneNode): Promise<HeuristicResu
     }))
   );
 }
-
-// Line height validation
-const expectedMin = requirements.lineHeight?.min || node.fontSize * 1.5;
-const expectedMax = requirements.lineHeight?.max || node.fontSize * 1.8;
-
-// Weight validation
-if (!validWeights.includes(fontWeight)) {
-  issues.push({
-    type: 'Invalid Font Weight',
-    message: `Font weight "${fontWeight}" is not recommended`,
-    suggestion: `Use one of: ${validWeights.join(', ')}`,
-    severity: 'warning'
-  });
-}

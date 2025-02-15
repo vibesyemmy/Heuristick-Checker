@@ -30,10 +30,14 @@ export interface TextStyleConfig {
   fontFamily?: string[];
 }
 
+import { AutoLineHeightConfig } from './config';
+
 export interface TypographyConfig {
   breakpoints: {
     [key: string]: Breakpoint;
   };
+  // Configuration for AUTO line height behavior
+  autoLineHeight: AutoLineHeightConfig;
   fontFamilies: {
     primary: string[];
     secondary: string[];
@@ -58,6 +62,7 @@ export interface TextContext {
   confidence: number;  // How confident we are about the role
   alternativeRoles?: TextRole[];  // Other possible roles if ambiguous
   hasAmbiguity?: boolean;  // True if there are competing signals
+  node: TextNode;  // The text node being analyzed
 }
 
 export interface StyleOverride {
